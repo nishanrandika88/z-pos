@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 46 42% 94%;
+    --foreground: 0 11% 21%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 11% 21%;
+    --primary: 162 60% 23%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 33 100% 50%;
+    --secondary-foreground: 0 11% 21%;
+    --muted: 46 42% 90%;
+    --muted-foreground: 0 11% 38%;
+    --accent: 89 46% 53%;
+    --accent-foreground: 162 60% 23%;
+    --destructive: 33 100% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 46 42% 84%;
+    --input: 46 42% 84%;
+    --ring: 33 100% 50%;
+    --radius: 0.5rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
+
+@layer utilities {
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .pos-scrollbar {
+    scrollbar-color: #ff8a00 #f6f3e9;
+    scrollbar-width: thin;
+  }
+
+  .pos-scrollbar::-webkit-scrollbar {
+    height: 8px;
+    width: 8px;
+  }
+
+  .pos-scrollbar::-webkit-scrollbar-track {
+    background: #f6f3e9;
+  }
+
+  .pos-scrollbar::-webkit-scrollbar-thumb {
+    background: #ff8a00;
+    border-radius: 999px;
+  }
+
+  .pos-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #8bc34a;
+  }
+}
