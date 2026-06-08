@@ -149,6 +149,14 @@ export function writeCachedCompanySettings(settings: ReceiptSettingsForm) {
   }
 }
 
+export function clearCachedCompanySettings() {
+  try {
+    localStorage.removeItem(companySettingsCacheKey);
+  } catch {
+    // Ignore cache cleanup failures.
+  }
+}
+
 function mapSettings(row: SettingsRow): ReceiptSettingsForm {
   return {
     id: row.id,

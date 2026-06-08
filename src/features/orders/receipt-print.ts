@@ -114,6 +114,18 @@ function receiptHtml(order: OrderSummary, settings: ReceiptSettings) {
   const totalQty = order.items.reduce((sum, item) => sum + item.quantity, 0);
   const totalDiscount = order.automaticDiscountTotal + order.manualDiscountTotal;
   const itemRows = order.items.map((item, index) => itemRow(index + 1, item)).join("");
+  const headerLines = [
+    addressBlock(settings.address),
+    settings.phone ? `<div class="center">Tel: ${escapeHtml(settings.phone)}</div>` : "",
+    settings.email ? `<div class="center">${escapeHtml(settings.email)}</div>` : "",
+    settings.taxNumber ? `<div class="center">Tax No: ${escapeHtml(settings.taxNumber)}</div>` : "",
+  ].filter(Boolean).join("");
+  const footerSections = [
+    settings.exchangePolicyMessage ? `<div class="footer">${escapeHtml(settings.exchangePolicyMessage)}</div>` : "",
+    settings.thankYouMessage ? `<div class="footer">${escapeHtml(settings.thankYouMessage)}</div>` : "",
+    settings.showNoCashRefund && settings.noCashRefundMessage ? `<div class="footer muted">${escapeHtml(settings.noCashRefundMessage)}</div>` : "",
+    settings.receiptFooter ? `<div class="footer muted">${escapeHtml(settings.receiptFooter)}</div>` : "",
+  ].filter(Boolean);
 
   return `
     <!doctype html>
@@ -142,6 +154,13 @@ function receiptHtml(order: OrderSummary, settings: ReceiptSettings) {
             line-height: .95;
             font-weight: 900;
             letter-spacing: .2px;
+          }
+          .logo {
+            display: block;
+            width: 42px;
+            height: 42px;
+            object-fit: contain;
+            margin: 0 auto 5px;
           }
           .center { text-align: center; }
           .address-line {
@@ -223,11 +242,9 @@ function receiptHtml(order: OrderSummary, settings: ReceiptSettings) {
       </head>
       <body>
         <div class="receipt">
-          <h1 class="shop-name">${escapeHtml(requiredText(settings.companyName, "Zestora").toUpperCase())}</h1>
-          ${addressBlock(settings.address)}
-          ${settings.phone ? `<div class="center">Tel: ${escapeHtml(settings.phone)}</div>` : ""}
-          ${settings.email ? `<div class="center">${escapeHtml(settings.email)}</div>` : ""}
-          ${settings.taxNumber ? `<div class="center">Tax No: ${escapeHtml(settings.taxNumber)}</div>` : ""}
+          <img class="logo" src="/brand/logo.png" alt="Zestora" />
+          ${settings.companyName ? `<h1 class="shop-name">${escapeHtml(settings.companyName.toUpperCase())}</h1>` : ""}
+          ${headerLines}
 
           <div class="rule"></div>
           <div class="meta">
@@ -265,12 +282,7 @@ function receiptHtml(order: OrderSummary, settings: ReceiptSettings) {
             <div>Total Qty : ${formatQuantity(totalQty)}</div>
           </div>
 
-          <div class="rule"></div>
-          ${settings.exchangePolicyMessage ? `<div class="footer">${escapeHtml(settings.exchangePolicyMessage)}</div>` : ""}
-          <div class="rule"></div>
-          <div class="footer">${escapeHtml(settings.thankYouMessage || "Thank you. Come again.")}</div>
-          ${settings.showNoCashRefund ? `<div class="footer muted">${escapeHtml(settings.noCashRefundMessage || "No cash refund")}</div>` : ""}
-          ${settings.receiptFooter ? `<div class="footer muted">${escapeHtml(settings.receiptFooter)}</div>` : ""}
+          ${footerSections.length > 0 ? `<div class="rule"></div>${footerSections.join('<div class="rule"></div>')}` : ""}
         </div>
       </body>
     </html>
@@ -375,10 +387,6 @@ function escapeHtml(value: string) {
     };
     return replacements[character];
   });
-}
-
-function requiredText(value: string | undefined, fallback: string) {
-  return value?.trim() || fallback;
 }
 
 function isMissingReceiptSettingsError(error: { message?: string } | null) {

@@ -72,12 +72,14 @@ export function CatalogPage() {
     queryKey: categoryQueryKey,
     queryFn: listCategories,
     initialData: readCachedCatalogCategories,
+    refetchOnMount: "always",
     refetchOnWindowFocus: false,
   });
   const itemsQuery = useQuery({
     queryKey: itemQueryKey,
     queryFn: listItems,
     initialData: readCachedCatalogItems,
+    refetchOnMount: "always",
     refetchOnWindowFocus: false,
   });
 

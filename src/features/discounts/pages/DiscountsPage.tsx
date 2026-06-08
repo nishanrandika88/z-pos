@@ -53,6 +53,7 @@ export function DiscountsPage() {
     queryFn: listDiscounts,
     initialData: readCachedCatalogDiscounts,
     staleTime: 15 * 60 * 1000,
+    refetchOnMount: "always",
     refetchOnWindowFocus: false,
   });
   const { data: categories = [] } = useQuery({
@@ -60,6 +61,7 @@ export function DiscountsPage() {
     queryFn: listCategories,
     initialData: readCachedCatalogCategories,
     staleTime: 15 * 60 * 1000,
+    refetchOnMount: "always",
     refetchOnWindowFocus: false,
   });
   const { data: items = [] } = useQuery({
@@ -67,6 +69,7 @@ export function DiscountsPage() {
     queryFn: listItems,
     initialData: readCachedCatalogItems,
     staleTime: 15 * 60 * 1000,
+    refetchOnMount: "always",
     refetchOnWindowFocus: false,
   });
 

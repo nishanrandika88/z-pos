@@ -44,6 +44,7 @@ export function SettingsPage() {
       return cached?.branchId === branchId ? cached : undefined;
     },
     staleTime: 15 * 60 * 1000,
+    refetchOnMount: "always",
     refetchOnWindowFocus: false,
     enabled: Boolean(branchId),
   });

@@ -1,4 +1,5 @@
 import { Outlet, NavLink, useLocation } from "react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   BarChart3,
   Boxes,
@@ -15,10 +16,12 @@ import {
   Users,
 } from "lucide-react";
 import { useState } from "react";
+import { useEffect, useRef } from "react";
 import { useAuthStore } from "@/features/auth/stores/auth.store";
 import { can } from "@/features/auth/rbac";
 import { BrandLogo } from "@/shared/ui/brand-logo";
 import { Button } from "@/shared/ui/button";
+import { syncAppData } from "@/shared/lib/app-sync";
 import { cn } from "@/shared/lib/cn";
 
 const navItems = [
@@ -34,12 +37,20 @@ const navItems = [
 ] as const;
 
 export function AppShell() {
+  const queryClient = useQueryClient();
   const { profile, logout } = useAuthStore();
   const location = useLocation();
   const [isNavCollapsed, setIsNavCollapsed] = useState(false);
+  const syncedProfileRef = useRef<string | null>(null);
   const visibleItems = navItems.filter((item) => can(profile?.role, item.permission));
   const isPos = location.pathname === "/pos";
   const userDisplayName = profile?.displayName || profile?.fullName || "Admin";
+
+  useEffect(() => {
+    if (!profile?.id || syncedProfileRef.current === profile.id) return;
+    syncedProfileRef.current = profile.id;
+    void syncAppData(queryClient);
+  }, [profile?.id, queryClient]);
 
   return (
     <div className="min-h-dvh bg-background text-foreground">

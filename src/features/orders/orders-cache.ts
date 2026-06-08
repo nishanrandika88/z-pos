@@ -21,6 +21,14 @@ export function writeCachedOrders(orders: OrderSummary[]) {
   writeCache(sortRecent(orders).slice(0, 50));
 }
 
+export function clearCachedOrders() {
+  try {
+    localStorage.removeItem(ordersCacheKey);
+  } catch {
+    // Ignore cache cleanup failures.
+  }
+}
+
 export function addCachedOrder(order: OrderSummary) {
   const current = readCache();
   writeCachedOrders([order, ...current.filter((entry) => entry.id !== order.id)]);
