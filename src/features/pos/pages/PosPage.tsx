@@ -271,11 +271,11 @@ export function PosPage() {
                 return (
                   <button
                     key={item.id}
-                    className="group relative rounded-2xl border border-brand-forest/10 bg-white p-3 text-center shadow-sm transition hover:-translate-y-0.5 hover:border-brand-orange/25 hover:bg-brand-lime/10 hover:shadow-lg"
+                    className="group relative rounded-2xl bg-white p-3 text-center shadow-sm transition hover:shadow-lg"
                     onClick={() => addItem(item)}
                   >
                     {ruleDiscount ? <DiscountPill className="absolute right-2 top-2" percentage={ruleDiscount.percentage} /> : null}
-                    <div className="mx-auto h-16 w-16 overflow-hidden rounded-full bg-brand-cream shadow-[0_8px_18px_rgba(0,0,0,.12)] ring-4 ring-white sm:h-20 sm:w-20">
+                    <div className="mx-auto h-16 w-16 overflow-hidden rounded-full shadow-[0_8px_18px_rgba(0,0,0,.12)] sm:h-20 sm:w-20">
                       <img
                         className="h-full w-full object-cover transition group-hover:scale-105"
                         src={item.image ?? itemPlaceholderImage}

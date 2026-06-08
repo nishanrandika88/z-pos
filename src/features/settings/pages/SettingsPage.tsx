@@ -34,6 +34,7 @@ export function SettingsPage() {
   const branchId = profile?.branchId;
   const [notice, setNotice] = useState<Notice | null>(null);
   const [form, setForm] = useState<ReceiptSettingsForm>(() => defaults(branchId ?? ""));
+  const previewAddressLines = splitReceiptAddress(form.address || "Address");
 
   const { data: settings, isLoading, error } = useQuery({
     queryKey: ["company-settings", branchId],
@@ -195,9 +196,13 @@ export function SettingsPage() {
             <h2 className="flex items-center gap-2 font-semibold"><Printer className="h-4 w-4" />Receipt Preview</h2>
           </CardHeader>
           <CardContent className="p-3">
-            <div className="mx-auto max-w-80 rounded-md border bg-white p-4 font-mono text-xs text-brand-espresso shadow-sm">
+              <div className="mx-auto max-w-80 rounded-md border bg-white p-4 font-mono text-xs text-brand-espresso shadow-sm">
               <h3 className="text-center text-xl font-black leading-none text-black">{form.companyName || "Shop Name"}</h3>
-              <p className="mt-2 text-center">{form.address || "Address"}</p>
+              <div className="mt-2 text-center">
+                {previewAddressLines.map((line) => (
+                  <p key={line}>{line}</p>
+                ))}
+              </div>
               <p className="text-center">Tel: {form.phone || "Phone"}</p>
               <div className="my-3 border-t border-dashed border-black" />
               <div className="flex justify-between"><span>Receipt</span><span>INV-000001</span></div>
@@ -215,4 +220,23 @@ export function SettingsPage() {
       </form>
     </div>
   );
+}
+
+function splitReceiptAddress(address: string) {
+  const normalized = address.trim().replace(/\s+/g, " ");
+  const commaParts = normalized.split(",").map((part) => part.trim()).filter(Boolean);
+
+  if (commaParts.length >= 2) {
+    const midpoint = Math.ceil(commaParts.length / 2);
+    return [
+      commaParts.slice(0, midpoint).join(", "),
+      commaParts.slice(midpoint).join(", "),
+    ].filter(Boolean);
+  }
+
+  const words = normalized.split(" ");
+  if (words.length <= 4 || normalized.length <= 32) return [normalized];
+
+  const midpoint = Math.ceil(words.length / 2);
+  return [words.slice(0, midpoint).join(" "), words.slice(midpoint).join(" ")];
 }

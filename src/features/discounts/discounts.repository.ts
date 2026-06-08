@@ -81,7 +81,7 @@ export async function updateDiscount(input: UpdateDiscountInput): Promise<Discou
   return mapDiscount(data);
 }
 
-export async function deactivateDiscount(id: string): Promise<void> {
+export async function archiveDiscount(id: string): Promise<void> {
   const { error } = await supabase
     .from("discounts")
     .update({ active: false })
@@ -89,3 +89,14 @@ export async function deactivateDiscount(id: string): Promise<void> {
 
   if (error) throw error;
 }
+
+export async function restoreDiscount(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("discounts")
+    .update({ active: true })
+    .eq("id", id);
+
+  if (error) throw error;
+}
+
+export const deactivateDiscount = archiveDiscount;

@@ -144,6 +144,10 @@ function receiptHtml(order: OrderSummary, settings: ReceiptSettings) {
             letter-spacing: .2px;
           }
           .center { text-align: center; }
+          .address-line {
+            text-align: center;
+            overflow-wrap: anywhere;
+          }
           .right { text-align: right; }
           .muted { color: #333; }
           .rule {
@@ -220,7 +224,7 @@ function receiptHtml(order: OrderSummary, settings: ReceiptSettings) {
       <body>
         <div class="receipt">
           <h1 class="shop-name">${escapeHtml(requiredText(settings.companyName, "Zestora").toUpperCase())}</h1>
-          ${settings.address ? `<div class="center">${escapeHtml(settings.address)}</div>` : ""}
+          ${addressBlock(settings.address)}
           ${settings.phone ? `<div class="center">Tel: ${escapeHtml(settings.phone)}</div>` : ""}
           ${settings.email ? `<div class="center">${escapeHtml(settings.email)}</div>` : ""}
           ${settings.taxNumber ? `<div class="center">Tax No: ${escapeHtml(settings.taxNumber)}</div>` : ""}
@@ -318,6 +322,32 @@ function paymentBlock(payment: OrderPayment | undefined) {
         : ""
     }
   `;
+}
+
+function addressBlock(address: string | undefined) {
+  const lines = splitAddress(address);
+  if (lines.length === 0) return "";
+  return lines.map((line) => `<div class="address-line">${escapeHtml(line)}</div>`).join("");
+}
+
+function splitAddress(address: string | undefined) {
+  const normalized = address?.trim().replace(/\s+/g, " ");
+  if (!normalized) return [];
+
+  const commaParts = normalized.split(",").map((part) => part.trim()).filter(Boolean);
+  if (commaParts.length >= 2) {
+    const midpoint = Math.ceil(commaParts.length / 2);
+    return [
+      commaParts.slice(0, midpoint).join(", "),
+      commaParts.slice(midpoint).join(", "),
+    ].filter(Boolean);
+  }
+
+  const words = normalized.split(" ");
+  if (words.length <= 4 || normalized.length <= 32) return [normalized];
+
+  const midpoint = Math.ceil(words.length / 2);
+  return [words.slice(0, midpoint).join(" "), words.slice(midpoint).join(" ")];
 }
 
 function formatAmount(value: number) {
