@@ -1,9 +1,10 @@
-import { type MouseEvent, useMemo, useState } from "react";
+import { type MouseEvent, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CalendarDays, CreditCard, Printer, Search, Wallet } from "lucide-react";
+import { CalendarDays, CreditCard, Printer, Search, Wallet, X } from "lucide-react";
 import { can } from "@/features/auth/rbac";
 import { useAuthStore } from "@/features/auth/stores/auth.store";
 import { auditReceiptReprint, listOrders } from "@/features/orders/orders.repository";
+import { readCachedOrders, writeCachedOrders } from "@/features/orders/orders-cache";
 import { printReceipt } from "@/features/orders/receipt-print";
 import type { OrderFilters, OrderPayment, OrderSummary } from "@/features/orders/types";
 import { Button } from "@/shared/ui/button";
@@ -21,11 +22,18 @@ export function OrdersPage() {
   const [draftFilters, setDraftFilters] = useState<OrderFilters>({});
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const hasActiveFilters = Boolean(filters.search?.trim() || filters.dateFrom || filters.dateTo);
 
   const { data: orders = emptyOrders, isLoading, error } = useQuery({
     queryKey: ["orders", filters],
     queryFn: () => listOrders(filters),
+    initialData: () => readCachedOrders(filters),
+    refetchOnWindowFocus: false,
   });
+
+  useEffect(() => {
+    if (!hasActiveFilters && orders.length > 0) writeCachedOrders(orders);
+  }, [hasActiveFilters, orders]);
 
   const selectedOrder = useMemo(
     () => orders.find((order) => order.id === selectedOrderId) ?? orders[0],
@@ -49,6 +57,12 @@ export function OrdersPage() {
     input.showPicker?.();
   }
 
+  function clearFilters() {
+    setDraftFilters({});
+    setFilters({});
+    setSelectedOrderId(null);
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
@@ -59,7 +73,7 @@ export function OrdersPage() {
         {notice ? <p className="rounded-xl border border-brand-forest/10 bg-white px-4 py-2 text-sm font-medium text-brand-espresso shadow-sm md:max-w-sm">{notice}</p> : null}
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_170px_170px_auto]">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_170px_170px_auto_auto]">
         <div className="relative">
           <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
           <Input
@@ -90,6 +104,10 @@ export function OrdersPage() {
           />
         </div>
         <Button className="sm:col-span-2 lg:col-span-1" onClick={() => setFilters(draftFilters)}>Search</Button>
+        <Button className="sm:col-span-2 lg:col-span-1" variant="outline" onClick={clearFilters}>
+          <X className="h-4 w-4" />
+          Clear
+        </Button>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1fr_420px]">

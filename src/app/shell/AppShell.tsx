@@ -115,7 +115,7 @@ export function AppShell() {
         {!isPos ? (
         <header className="sticky top-0 z-10 flex min-h-16 shrink-0 items-center justify-between gap-3 border-b border-brand-forest/10 bg-white px-3 py-2 sm:px-4 lg:px-6">
           <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
-            <span className="truncate text-2xl font-extrabold text-brand-forest">Zestora</span>
+            <span className="truncate text-2xl font-extrabold uppercase text-brand-forest">ZESTORA</span>
             <span className="rounded-full bg-brand-orange px-3 py-1 text-sm font-black text-white">POS</span>
           </div>
           <div className="flex min-w-0 items-center gap-2 rounded-full border border-brand-forest/10 bg-white px-3 py-2 text-sm font-semibold text-brand-forest">

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDown,
   CheckCircle2,
@@ -23,6 +23,7 @@ import {
 } from "@/features/catalog/catalog-cache";
 import { useAuthStore } from "@/features/auth/stores/auth.store";
 import { getOrderById } from "@/features/orders/orders.repository";
+import { addCachedOrder, mergeRecentOrder } from "@/features/orders/orders-cache";
 import { openReceiptWindow, printReceipt } from "@/features/orders/receipt-print";
 import type { OrderSummary } from "@/features/orders/types";
 import { createOrder, listActiveItems, loadActiveDiscounts, searchItems } from "@/features/pos/pos.repository";
@@ -38,6 +39,7 @@ type Notice = { type: "success" | "error"; message: string } | null;
 type CreateOrderVariables = { draft: OrderDraft; receiptWindow: Window | null };
 
 export function PosPage() {
+  const queryClient = useQueryClient();
   const [term, setTerm] = useState("");
   const [debouncedTerm, setDebouncedTerm] = useState("");
   const [category, setCategory] = useState("Lunch");
@@ -56,6 +58,9 @@ export function PosPage() {
       void printReceipt(order, variables.receiptWindow).catch((error) => {
         setNotice({ type: "error", message: error instanceof Error ? error.message : "Could not print receipt." });
       });
+      addCachedOrder(order);
+      queryClient.setQueryData<OrderSummary[]>(["orders", {}], (current) => mergeRecentOrder(current, order));
+      void queryClient.invalidateQueries({ queryKey: ["orders"] });
       clearCart();
       setNotice({ type: "success", message: `Order ${order.orderNumber} saved and sent to print.` });
     },

@@ -101,9 +101,11 @@ export function CatalogPage() {
   useEffect(() => {
     if (itemsQuery.data) {
       writeCachedCatalogItems(items);
-      writeCachedActiveItems(items.filter((item) => item.active && item.availability && item.categoryActive !== false));
+      const activeItems = activeCatalogItems(items);
+      writeCachedActiveItems(activeItems);
+      queryClient.setQueryData<Item[]>(["items", "active"], activeItems);
     }
-  }, [items, itemsQuery.data]);
+  }, [items, itemsQuery.data, queryClient]);
 
   const selectedCategoryItems = useMemo(() => {
     const query = itemSearch.trim().toLowerCase();
@@ -199,8 +201,10 @@ export function CatalogPage() {
   function setItemsData(updater: (current: Item[]) => Item[]) {
     queryClient.setQueryData<Item[]>(itemQueryKey, (current = []) => {
       const next = sortItems(updater(current));
+      const activeItems = activeCatalogItems(next);
       writeCachedCatalogItems(next);
-      writeCachedActiveItems(next.filter((item) => item.active && item.availability && item.categoryActive !== false));
+      writeCachedActiveItems(activeItems);
+      queryClient.setQueryData<Item[]>(["items", "active"], activeItems);
       return next;
     });
   }
@@ -741,4 +745,8 @@ function sortItems(items: Item[]) {
       left.displayOrder - right.displayOrder ||
       left.itemName.localeCompare(right.itemName),
   );
+}
+
+function activeCatalogItems(items: Item[]) {
+  return sortItems(items.filter((item) => item.active && item.availability && item.categoryActive !== false));
 }

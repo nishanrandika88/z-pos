@@ -125,13 +125,16 @@ export function UsersPage() {
       {showForm ? (
         <form className="grid gap-2.5 rounded-md border bg-card p-2.5 md:grid-cols-2 xl:grid-cols-6" onSubmit={saveUser}>
           {!editingUserId ? (
-            <Input
-              className="h-10 md:col-span-2 xl:col-span-2"
-              value={form.id}
-              onChange={(event) => updateForm("id", event.target.value)}
-              placeholder="Auth user ID"
-              autoFocus
-            />
+            <div className="md:col-span-2 xl:col-span-2">
+              <Input
+                className="h-10"
+                value={form.id}
+                onChange={(event) => updateForm("id", event.target.value)}
+                placeholder="Supabase Auth user ID"
+                autoFocus
+              />
+              <p className="mt-1 px-2 text-xs text-muted-foreground">Create the login in Supabase Auth first, then paste that user's UUID here.</p>
+            </div>
           ) : null}
           <Input
             className="h-10 xl:col-span-2"

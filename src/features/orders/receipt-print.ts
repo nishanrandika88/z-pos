@@ -184,9 +184,9 @@ function receiptHtml(order: OrderSummary, settings: ReceiptSettings) {
             vertical-align: top;
           }
           .col-no { width: 18px; }
-          .col-price { width: 56px; }
-          .col-disc { width: 34px; }
-          .col-qty { width: 42px; }
+          .col-price { width: 54px; padding-right: 3px; }
+          .col-disc { width: 38px; padding-left: 3px; }
+          .col-qty { width: 40px; }
           .col-amt { width: 62px; }
           .product-name {
             overflow-wrap: anywhere;
