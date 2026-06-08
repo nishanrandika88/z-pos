@@ -1,5 +1,13 @@
 import { supabase } from "@/shared/lib/supabase";
-import type { OrderFilters, OrderItemLine, OrderPayment, OrderStatus, OrderSummary } from "@/features/orders/types";
+import type {
+  OrderFilters,
+  OrderItemLine,
+  OrderListResult,
+  OrderPageOptions,
+  OrderPayment,
+  OrderStatus,
+  OrderSummary,
+} from "@/features/orders/types";
 
 type Relation<T> = T | T[] | null;
 
@@ -103,7 +111,7 @@ const orderSelect = `
   grand_total,
   created_at,
   completed_at,
-  cashier:profiles(full_name,display_name,email),
+  cashier:profiles!orders_cashier_id_fkey(full_name,display_name,email),
   order_items(id,item_code,item_name,quantity,unit_price,discount_total,line_total),
   payments(id,method,amount,amount_tendered,balance_returned,card_type,bank_name,card_last4,masked_card_number)
 `;
@@ -119,23 +127,71 @@ const orderSelectWithoutDisplayName = `
   grand_total,
   created_at,
   completed_at,
+  cashier:profiles!orders_cashier_id_fkey(full_name,email),
+  order_items(id,item_code,item_name,quantity,unit_price,discount_total,line_total),
+  payments(id,method,amount,amount_tendered,balance_returned,card_type,bank_name,card_last4,masked_card_number)
+`;
+
+const legacyOrderSelect = `
+  id,
+  order_number,
+  status,
+  subtotal,
+  automatic_discount_total,
+  manual_discount_total,
+  tax_total,
+  grand_total,
+  created_at,
+  completed_at,
+  cashier:profiles(full_name,display_name,email),
+  order_items(id,item_code,item_name,quantity,unit_price,discount_total,line_total),
+  payments(id,method,amount,amount_tendered,balance_returned,card_type,bank_name,card_last4,masked_card_number)
+`;
+
+const legacyOrderSelectWithoutDisplayName = `
+  id,
+  order_number,
+  status,
+  subtotal,
+  automatic_discount_total,
+  manual_discount_total,
+  tax_total,
+  grand_total,
+  created_at,
+  completed_at,
   cashier:profiles(full_name,email),
   order_items(id,item_code,item_name,quantity,unit_price,discount_total,line_total),
   payments(id,method,amount,amount_tendered,balance_returned,card_type,bank_name,card_last4,masked_card_number)
 `;
 
-export async function listOrders(filters: OrderFilters): Promise<OrderSummary[]> {
-  let { data, error } = await buildOrdersQuery(orderSelect, filters);
+export async function listOrders(filters: OrderFilters, pageOptions: OrderPageOptions): Promise<OrderListResult> {
+  let { data, error } = await buildOrdersQuery(orderSelect, filters, pageOptions);
 
   if (isMissingDisplayNameError(error)) {
-    const fallback = await buildOrdersQuery(orderSelectWithoutDisplayName, filters);
+    const fallback = await buildOrdersQuery(orderSelectWithoutDisplayName, filters, pageOptions);
+    data = fallback.data as typeof data;
+    error = fallback.error;
+  }
+
+  if (isRelationSelectError(error)) {
+    const fallback = await buildOrdersQuery(legacyOrderSelect, filters, pageOptions);
+    data = fallback.data as typeof data;
+    error = fallback.error;
+  }
+
+  if (isMissingDisplayNameError(error)) {
+    const fallback = await buildOrdersQuery(legacyOrderSelectWithoutDisplayName, filters, pageOptions);
     data = fallback.data as typeof data;
     error = fallback.error;
   }
 
   if (error) throw error;
 
-  return (data as unknown as OrderRow[]).map(mapOrder);
+  const rows = data as unknown as OrderRow[];
+  return {
+    orders: rows.slice(0, pageOptions.pageSize).map(mapOrder),
+    hasMore: rows.length > pageOptions.pageSize,
+  };
 }
 
 export async function getOrderById(orderId: string): Promise<OrderSummary> {
@@ -155,6 +211,26 @@ export async function getOrderById(orderId: string): Promise<OrderSummary> {
     error = fallback.error;
   }
 
+  if (isRelationSelectError(error)) {
+    const fallback = await supabase
+      .from("orders")
+      .select(legacyOrderSelect)
+      .eq("id", orderId)
+      .single();
+    data = fallback.data as typeof data;
+    error = fallback.error;
+  }
+
+  if (isMissingDisplayNameError(error)) {
+    const fallback = await supabase
+      .from("orders")
+      .select(legacyOrderSelectWithoutDisplayName)
+      .eq("id", orderId)
+      .single();
+    data = fallback.data as typeof data;
+    error = fallback.error;
+  }
+
   if (error) throw error;
 
   return mapOrder(data as OrderRow);
@@ -165,12 +241,16 @@ export async function auditReceiptReprint(orderId: string) {
   if (error) throw error;
 }
 
-function buildOrdersQuery(select: string, filters: OrderFilters) {
+function buildOrdersQuery(select: string, filters: OrderFilters, pageOptions: OrderPageOptions) {
+  const page = Math.max(1, pageOptions.page);
+  const pageSize = Math.max(1, pageOptions.pageSize);
+  const from = (page - 1) * pageSize;
+
   let query = supabase
     .from("orders")
     .select(select)
     .order("created_at", { ascending: false })
-    .limit(50);
+    .range(from, from + pageSize);
 
   if (filters.search?.trim()) {
     query = query.ilike("order_number", `%${filters.search.trim()}%`);
@@ -189,4 +269,9 @@ function buildOrdersQuery(select: string, filters: OrderFilters) {
 
 function isMissingDisplayNameError(error: { message?: string } | null) {
   return Boolean(error?.message?.toLowerCase().includes("display_name"));
+}
+
+function isRelationSelectError(error: { message?: string } | null) {
+  const message = error?.message?.toLowerCase() ?? "";
+  return message.includes("relationship") || message.includes("schema cache") || message.includes("foreign key");
 }

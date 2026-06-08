@@ -1,4 +1,4 @@
-import type { OrderFilters, OrderSummary } from "@/features/orders/types";
+import type { OrderFilters, OrderPageOptions, OrderSummary } from "@/features/orders/types";
 
 const ordersCacheKey = "z-pos:orders:recent:v1";
 const maxCacheAgeMs = 24 * 60 * 60 * 1000;
@@ -8,8 +8,13 @@ interface OrdersCachePayload {
   data: OrderSummary[];
 }
 
-export function readCachedOrders(filters: OrderFilters = {}) {
-  return applyOrderFilters(readCache(), filters);
+export function readCachedOrders(filters: OrderFilters = {}, pageOptions?: Partial<OrderPageOptions>) {
+  const filteredOrders = applyOrderFilters(readCache(), filters);
+  if (!pageOptions?.pageSize) return filteredOrders;
+
+  const page = Math.max(1, pageOptions.page ?? 1);
+  const start = (page - 1) * pageOptions.pageSize;
+  return filteredOrders.slice(start, start + pageOptions.pageSize);
 }
 
 export function writeCachedOrders(orders: OrderSummary[]) {

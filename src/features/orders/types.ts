@@ -44,3 +44,13 @@ export interface OrderFilters {
   dateFrom?: string;
   dateTo?: string;
 }
+
+export interface OrderPageOptions {
+  page: number;
+  pageSize: number;
+}
+
+export interface OrderListResult {
+  orders: OrderSummary[];
+  hasMore: boolean;
+}

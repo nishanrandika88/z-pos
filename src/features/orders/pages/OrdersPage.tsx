@@ -14,26 +14,35 @@ import { Input } from "@/shared/ui/input";
 const currency = new Intl.NumberFormat("en-LK", { style: "currency", currency: "LKR" });
 const dateTime = new Intl.DateTimeFormat("en-LK", { dateStyle: "medium", timeStyle: "short" });
 const emptyOrders: OrderSummary[] = [];
+const ordersPageSize = 20;
+const emptyOrderResult = { orders: emptyOrders, hasMore: false };
 
 export function OrdersPage() {
   const profile = useAuthStore((state) => state.profile);
   const canReprint = can(profile?.role, "orders:reprint");
   const [filters, setFilters] = useState<OrderFilters>({});
   const [draftFilters, setDraftFilters] = useState<OrderFilters>({});
+  const [page, setPage] = useState(1);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const hasActiveFilters = Boolean(filters.search?.trim() || filters.dateFrom || filters.dateTo);
 
-  const { data: orders = emptyOrders, isLoading, error } = useQuery({
-    queryKey: ["orders", filters],
-    queryFn: () => listOrders(filters),
-    initialData: () => readCachedOrders(filters),
+  const { data: orderResult = emptyOrderResult, isFetching, isLoading, error } = useQuery({
+    queryKey: ["orders", filters, page, ordersPageSize],
+    queryFn: () => listOrders(filters, { page, pageSize: ordersPageSize }),
+    initialData: () => {
+      if (page !== 1) return undefined;
+
+      const cachedOrders = readCachedOrders(filters, { page, pageSize: ordersPageSize });
+      return cachedOrders.length > 0 ? { orders: cachedOrders, hasMore: cachedOrders.length === ordersPageSize } : undefined;
+    },
     refetchOnWindowFocus: false,
   });
+  const orders = orderResult.orders;
 
   useEffect(() => {
-    if (!hasActiveFilters && orders.length > 0) writeCachedOrders(orders);
-  }, [hasActiveFilters, orders]);
+    if (!hasActiveFilters && page === 1 && orders.length > 0) writeCachedOrders(orders);
+  }, [hasActiveFilters, orders, page]);
 
   const selectedOrder = useMemo(
     () => orders.find((order) => order.id === selectedOrderId) ?? orders[0],
@@ -60,6 +69,13 @@ export function OrdersPage() {
   function clearFilters() {
     setDraftFilters({});
     setFilters({});
+    setPage(1);
+    setSelectedOrderId(null);
+  }
+
+  function searchOrders() {
+    setFilters(normalizeFilters(draftFilters));
+    setPage(1);
     setSelectedOrderId(null);
   }
 
@@ -81,6 +97,9 @@ export function OrdersPage() {
             placeholder="Search order number"
             value={draftFilters.search ?? ""}
             onChange={(event) => setDraftFilters((current) => ({ ...current, search: event.target.value }))}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") searchOrders();
+            }}
           />
         </div>
         <div className="relative">
@@ -103,7 +122,7 @@ export function OrdersPage() {
             onChange={(event) => setDraftFilters((current) => ({ ...current, dateTo: event.target.value }))}
           />
         </div>
-        <Button className="sm:col-span-2 lg:col-span-1" onClick={() => setFilters(draftFilters)}>Search</Button>
+        <Button className="sm:col-span-2 lg:col-span-1" onClick={searchOrders}>Search</Button>
         <Button className="sm:col-span-2 lg:col-span-1" variant="outline" onClick={clearFilters}>
           <X className="h-4 w-4" />
           Clear
@@ -115,11 +134,13 @@ export function OrdersPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <h2 className="font-semibold">Recent orders</h2>
-              <span className="text-sm text-muted-foreground">{orders.length} loaded</span>
+              <span className="text-sm text-muted-foreground">
+                Page {page} - {orders.length} shown
+              </span>
             </div>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
+            {isLoading && orders.length === 0 ? (
               <div className="grid min-h-64 place-items-center text-muted-foreground">Loading orders...</div>
             ) : error ? (
               <div className="grid min-h-64 place-items-center rounded-xl bg-destructive/10 p-4 text-sm text-destructive">
@@ -165,7 +186,7 @@ export function OrdersPage() {
                     <button
                       key={order.id}
                       className={[
-                        "grid w-full grid-cols-[1.3fr_.8fr_.8fr_.7fr] items-center border-b px-3 py-2 text-left text-sm transition last:border-b-0 hover:bg-white",
+                        "grid w-full grid-cols-[1.3fr_.8fr_.8fr_.7fr] items-center border-b px-3 py-2 text-left text-sm transition last:border-b-0",
                         selectedOrder?.id === order.id ? "bg-brand-orange/10" : "bg-white",
                       ].join(" ")}
                       onClick={() => setSelectedOrderId(order.id)}
@@ -181,6 +202,33 @@ export function OrdersPage() {
                       <strong className="text-right text-brand-forest">{currency.format(order.grandTotal)}</strong>
                     </button>
                   ))}
+                </div>
+                <div className="mt-4 flex flex-col gap-2 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    {isFetching ? "Refreshing orders..." : `Showing ${orders.length} orders on page ${page}`}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 sm:flex">
+                    <Button
+                      variant="outline"
+                      disabled={page === 1 || isFetching}
+                      onClick={() => {
+                        setPage((current) => Math.max(1, current - 1));
+                        setSelectedOrderId(null);
+                      }}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      variant="outline"
+                      disabled={!orderResult.hasMore || isFetching}
+                      onClick={() => {
+                        setPage((current) => current + 1);
+                        setSelectedOrderId(null);
+                      }}
+                    >
+                      Next
+                    </Button>
+                  </div>
                 </div>
               </>
             )}
@@ -219,6 +267,17 @@ function StatusBadge({ status }: { status: OrderSummary["status"] }) {
         : "bg-brand-cream text-brand-espresso";
 
   return <span className={`rounded-full px-3 py-1 text-xs font-semibold ${className}`}>{status}</span>;
+}
+
+function normalizeFilters(filters: OrderFilters): OrderFilters {
+  const normalized: OrderFilters = {};
+  const search = filters.search?.trim();
+
+  if (search) normalized.search = search;
+  if (filters.dateFrom) normalized.dateFrom = filters.dateFrom;
+  if (filters.dateTo) normalized.dateTo = filters.dateTo;
+
+  return normalized;
 }
 
 function OrderDetails({ order, canReprint }: { order: OrderSummary; canReprint: boolean }) {

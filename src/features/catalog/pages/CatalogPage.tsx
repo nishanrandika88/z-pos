@@ -525,7 +525,7 @@ export function CatalogPage() {
         </form>
       ) : null}
 
-      <div className="grid gap-3 xl:grid-cols-[300px_1fr]">
+      <div className="grid gap-3 xl:grid-cols-[380px_1fr] 2xl:grid-cols-[420px_1fr]">
         <Card>
           <CardHeader className="p-3">
             <div className="flex items-center justify-between gap-3">
@@ -533,7 +533,7 @@ export function CatalogPage() {
               <span className="text-xs font-medium text-muted-foreground">{categories.length}</span>
             </div>
           </CardHeader>
-          <CardContent className="space-y-1.5 p-3">
+          <CardContent className="space-y-2 p-3">
             {categories.length === 0 ? (
               <div className="grid min-h-32 place-items-center rounded-md border border-dashed px-4 text-center text-sm text-muted-foreground">
                 No cached categories. Use Refresh to load from database.
@@ -550,13 +550,13 @@ export function CatalogPage() {
                     onDragOver={(event) => event.preventDefault()}
                     onDrop={() => moveCategory(category.id)}
                     className={[
-                      "flex items-center justify-between gap-2 rounded-md border px-2.5 py-2 transition",
+                      "flex items-start justify-between gap-2 rounded-md border px-3 py-3 transition",
                       selectedCategoryId === category.id ? "border-brand-orange bg-brand-orange/10" : "bg-white",
                     ].join(" ")}
                   >
-                    <button className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => setSelectedCategoryId(category.id)}>
-                      <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-muted-foreground" />
-                      <span className="min-w-0 truncate text-sm font-medium">{category.name}</span>
+                    <button className="flex min-w-0 flex-1 items-start gap-2 text-left" onClick={() => setSelectedCategoryId(category.id)}>
+                      <GripVertical className="mt-0.5 h-4 w-4 shrink-0 cursor-grab text-muted-foreground" />
+                      <span className="min-w-0 break-words text-sm font-medium leading-5">{category.name}</span>
                     </button>
                     <div className="flex shrink-0 items-center gap-1">
                       <span className="rounded-full bg-brand-cream px-2 py-1 text-xs font-semibold text-brand-forest">{count}</span>
