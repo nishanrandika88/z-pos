@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { type MouseEvent, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CalendarDays, CreditCard, Printer, Search, Wallet } from "lucide-react";
 import { can } from "@/features/auth/rbac";
@@ -37,11 +37,16 @@ export function OrdersPage() {
 
     try {
       await auditReceiptReprint(selectedOrder.id);
-      printReceipt(selectedOrder);
+      await printReceipt(selectedOrder);
       setNotice("Receipt reprint audited.");
     } catch (printError) {
       setNotice(printError instanceof Error ? printError.message : "Could not reprint receipt.");
     }
+  }
+
+  function openDatePicker(event: MouseEvent<HTMLInputElement>) {
+    const input = event.currentTarget as HTMLInputElement & { showPicker?: () => void };
+    input.showPicker?.();
   }
 
   return (
@@ -51,10 +56,10 @@ export function OrdersPage() {
           <h1 className="text-2xl font-semibold">Orders</h1>
           <p className="text-muted-foreground">Search orders, view details, and reprint receipts when allowed.</p>
         </div>
-        {notice ? <p className="rounded-xl border border-brand-forest/10 bg-white px-4 py-2 text-sm font-medium text-brand-espresso shadow-sm">{notice}</p> : null}
+        {notice ? <p className="rounded-xl border border-brand-forest/10 bg-white px-4 py-2 text-sm font-medium text-brand-espresso shadow-sm md:max-w-sm">{notice}</p> : null}
       </div>
 
-      <div className="grid gap-2 lg:grid-cols-[1fr_170px_170px_auto]">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_170px_170px_auto]">
         <div className="relative">
           <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
           <Input
@@ -67,22 +72,24 @@ export function OrdersPage() {
         <div className="relative">
           <CalendarDays className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
           <Input
-            className="pl-9"
+            className="date-input cursor-pointer pl-9 pr-10"
             type="date"
             value={draftFilters.dateFrom ?? ""}
+            onClick={openDatePicker}
             onChange={(event) => setDraftFilters((current) => ({ ...current, dateFrom: event.target.value }))}
           />
         </div>
         <div className="relative">
           <CalendarDays className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
           <Input
-            className="pl-9"
+            className="date-input cursor-pointer pl-9 pr-10"
             type="date"
             value={draftFilters.dateTo ?? ""}
+            onClick={openDatePicker}
             onChange={(event) => setDraftFilters((current) => ({ ...current, dateTo: event.target.value }))}
           />
         </div>
-        <Button onClick={() => setFilters(draftFilters)}>Search</Button>
+        <Button className="sm:col-span-2 lg:col-span-1" onClick={() => setFilters(draftFilters)}>Search</Button>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1fr_420px]">
@@ -103,39 +110,66 @@ export function OrdersPage() {
             ) : orders.length === 0 ? (
               <div className="grid min-h-64 place-items-center text-muted-foreground">No orders found.</div>
             ) : (
-              <div className="overflow-hidden rounded-xl border">
-                <div className="grid grid-cols-[1.3fr_.8fr_.8fr_.7fr] border-b bg-brand-cream px-3 py-2 text-xs font-semibold uppercase text-brand-espresso/70">
-                  <span>Order</span>
-                  <span>Cashier</span>
-                  <span>Status</span>
-                  <span className="text-right">Total</span>
+              <>
+                <div className="grid gap-3 md:hidden">
+                  {orders.map((order) => (
+                    <button
+                      key={order.id}
+                      className={[
+                        "w-full rounded-xl border p-3 text-left transition",
+                        selectedOrder?.id === order.id ? "border-brand-orange bg-brand-orange/10" : "bg-white",
+                      ].join(" ")}
+                      onClick={() => setSelectedOrderId(order.id)}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <strong className="block truncate text-brand-forest">{order.orderNumber}</strong>
+                          <span className="text-xs text-brand-espresso/60">{dateTime.format(new Date(order.createdAt))}</span>
+                        </div>
+                        <strong className="shrink-0 text-right text-brand-forest">{currency.format(order.grandTotal)}</strong>
+                      </div>
+                      <div className="mt-3 flex items-center justify-between gap-3">
+                        <span className="min-w-0 truncate text-sm text-brand-espresso">{order.cashierName}</span>
+                        <StatusBadge status={order.status} />
+                      </div>
+                    </button>
+                  ))}
                 </div>
-                {orders.map((order) => (
-                  <button
-                    key={order.id}
-                    className={[
-                      "grid w-full grid-cols-[1.3fr_.8fr_.8fr_.7fr] items-center border-b px-3 py-2 text-left text-sm transition last:border-b-0 hover:bg-white",
-                      selectedOrder?.id === order.id ? "bg-brand-orange/10" : "bg-white",
-                    ].join(" ")}
-                    onClick={() => setSelectedOrderId(order.id)}
-                  >
-                    <span>
-                      <strong className="block text-brand-forest">{order.orderNumber}</strong>
-                      <span className="text-xs text-brand-espresso/60">{dateTime.format(new Date(order.createdAt))}</span>
-                    </span>
-                    <span className="truncate text-brand-espresso">{order.cashierName}</span>
-                    <span>
-                      <StatusBadge status={order.status} />
-                    </span>
-                    <strong className="text-right text-brand-forest">{currency.format(order.grandTotal)}</strong>
-                  </button>
-                ))}
-              </div>
+
+                <div className="hidden overflow-hidden rounded-xl border md:block">
+                  <div className="grid grid-cols-[1.3fr_.8fr_.8fr_.7fr] border-b bg-brand-cream px-3 py-2 text-xs font-semibold uppercase text-brand-espresso/70">
+                    <span>Order</span>
+                    <span>Cashier</span>
+                    <span>Status</span>
+                    <span className="text-right">Total</span>
+                  </div>
+                  {orders.map((order) => (
+                    <button
+                      key={order.id}
+                      className={[
+                        "grid w-full grid-cols-[1.3fr_.8fr_.8fr_.7fr] items-center border-b px-3 py-2 text-left text-sm transition last:border-b-0 hover:bg-white",
+                        selectedOrder?.id === order.id ? "bg-brand-orange/10" : "bg-white",
+                      ].join(" ")}
+                      onClick={() => setSelectedOrderId(order.id)}
+                    >
+                      <span className="min-w-0">
+                        <strong className="block truncate text-brand-forest">{order.orderNumber}</strong>
+                        <span className="text-xs text-brand-espresso/60">{dateTime.format(new Date(order.createdAt))}</span>
+                      </span>
+                      <span className="truncate text-brand-espresso">{order.cashierName}</span>
+                      <span>
+                        <StatusBadge status={order.status} />
+                      </span>
+                      <strong className="text-right text-brand-forest">{currency.format(order.grandTotal)}</strong>
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="xl:sticky xl:top-6 xl:self-start">
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
               <h2 className="font-semibold">Order details</h2>
@@ -182,7 +216,7 @@ function OrderDetails({ order, canReprint }: { order: OrderSummary; canReprint: 
           </div>
           <StatusBadge status={order.status} />
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+        <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
           <Info label="Date" value={dateTime.format(new Date(order.createdAt))} />
           <Info label="Cashier" value={order.cashierName} />
         </div>
@@ -206,7 +240,7 @@ function OrderDetails({ order, canReprint }: { order: OrderSummary; canReprint: 
 
       <div className="rounded-xl border p-4 text-sm">
         <SummaryRow label="Subtotal" value={order.subtotal} />
-        <SummaryRow label="Auto discount" value={-order.automaticDiscountTotal} />
+        <SummaryRow label="Rule discount" value={-order.automaticDiscountTotal} />
         <SummaryRow label="Bill discount" value={-order.manualDiscountTotal} />
         <SummaryRow label="Tax" value={order.taxTotal} />
         <div className="mt-3 flex justify-between border-t pt-3 text-lg font-bold">

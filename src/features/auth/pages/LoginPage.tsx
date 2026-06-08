@@ -30,14 +30,14 @@ export function LoginPage() {
   }
 
   return (
-    <main className="grid min-h-screen place-items-center bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="px-8 pt-8 text-center">
+    <main className="grid min-h-dvh place-items-center bg-background px-3 py-6 sm:p-4">
+      <Card className="w-full max-w-md overflow-hidden">
+        <CardHeader className="px-5 pt-7 text-center sm:px-8 sm:pt-8">
           <BrandLogo />
           <h1 className="mt-6 text-2xl font-semibold">Login</h1>
           <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">Secure access for retail billing and back office operations.</p>
         </CardHeader>
-        <CardContent className="px-8 pb-8 pt-6">
+        <CardContent className="px-5 pb-7 pt-5 sm:px-8 sm:pb-8 sm:pt-6">
           <form className="space-y-4" onSubmit={form.handleSubmit(onSubmit)}>
             <label className="block space-y-2">
               <span className="text-sm font-medium">Email</span>

@@ -2,12 +2,14 @@ import type { Discount, Item } from "@/domain/catalog/types";
 import type { CartLine, OrderTotals } from "@/domain/orders/types";
 
 export function findBestAutomaticDiscount(item: Item, discounts: Discount[]) {
-  return discounts.find(
-    (discount) =>
-      discount.active &&
-      ((discount.applicableType === "ITEM" && discount.applicableId === item.id) ||
-        (discount.applicableType === "CATEGORY" && discount.applicableId === item.categoryId)),
-  );
+  return discounts
+    .filter(
+      (discount) =>
+        discount.active &&
+        ((discount.applicableType === "ITEM" && discount.applicableId === item.id) ||
+          (discount.applicableType === "CATEGORY" && discount.applicableId === item.categoryId)),
+    )
+    .sort((left, right) => right.percentage - left.percentage)[0];
 }
 
 export function calculateLine(item: Item, quantity: number, discounts: Discount[]): CartLine {

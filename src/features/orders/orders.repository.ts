@@ -14,7 +14,7 @@ type OrderRow = {
   grand_total: number | string;
   created_at: string;
   completed_at: string | null;
-  cashier: Relation<{ full_name: string | null; email: string | null }>;
+  cashier: Relation<{ full_name: string | null; display_name?: string | null; email: string | null }>;
   order_items: Array<{
     id: string;
     item_code: string;
@@ -79,7 +79,7 @@ function mapOrder(row: OrderRow): OrderSummary {
     id: row.id,
     orderNumber: row.order_number,
     status: row.status,
-    cashierName: cashier?.full_name ?? cashier?.email ?? "Unknown cashier",
+    cashierName: cashier?.display_name ?? cashier?.full_name ?? cashier?.email ?? "Unknown cashier",
     subtotal: numberValue(row.subtotal),
     automaticDiscountTotal: numberValue(row.automatic_discount_total),
     manualDiscountTotal: numberValue(row.manual_discount_total),
@@ -103,15 +103,72 @@ const orderSelect = `
   grand_total,
   created_at,
   completed_at,
+  cashier:profiles(full_name,display_name,email),
+  order_items(id,item_code,item_name,quantity,unit_price,discount_total,line_total),
+  payments(id,method,amount,amount_tendered,balance_returned,card_type,bank_name,card_last4,masked_card_number)
+`;
+
+const orderSelectWithoutDisplayName = `
+  id,
+  order_number,
+  status,
+  subtotal,
+  automatic_discount_total,
+  manual_discount_total,
+  tax_total,
+  grand_total,
+  created_at,
+  completed_at,
   cashier:profiles(full_name,email),
   order_items(id,item_code,item_name,quantity,unit_price,discount_total,line_total),
   payments(id,method,amount,amount_tendered,balance_returned,card_type,bank_name,card_last4,masked_card_number)
 `;
 
 export async function listOrders(filters: OrderFilters): Promise<OrderSummary[]> {
-  let query = supabase
+  let { data, error } = await buildOrdersQuery(orderSelect, filters);
+
+  if (isMissingDisplayNameError(error)) {
+    const fallback = await buildOrdersQuery(orderSelectWithoutDisplayName, filters);
+    data = fallback.data as typeof data;
+    error = fallback.error;
+  }
+
+  if (error) throw error;
+
+  return (data as unknown as OrderRow[]).map(mapOrder);
+}
+
+export async function getOrderById(orderId: string): Promise<OrderSummary> {
+  let { data, error } = await supabase
     .from("orders")
     .select(orderSelect)
+    .eq("id", orderId)
+    .single();
+
+  if (isMissingDisplayNameError(error)) {
+    const fallback = await supabase
+      .from("orders")
+      .select(orderSelectWithoutDisplayName)
+      .eq("id", orderId)
+      .single();
+    data = fallback.data as typeof data;
+    error = fallback.error;
+  }
+
+  if (error) throw error;
+
+  return mapOrder(data as OrderRow);
+}
+
+export async function auditReceiptReprint(orderId: string) {
+  const { error } = await supabase.rpc("audit_receipt_reprint", { target_order_id: orderId });
+  if (error) throw error;
+}
+
+function buildOrdersQuery(select: string, filters: OrderFilters) {
+  let query = supabase
+    .from("orders")
+    .select(select)
     .order("created_at", { ascending: false })
     .limit(50);
 
@@ -127,26 +184,9 @@ export async function listOrders(filters: OrderFilters): Promise<OrderSummary[]>
     query = query.lte("created_at", `${filters.dateTo}T23:59:59.999`);
   }
 
-  const { data, error } = await query;
-
-  if (error) throw error;
-
-  return (data as OrderRow[]).map(mapOrder);
+  return query;
 }
 
-export async function getOrderById(orderId: string): Promise<OrderSummary> {
-  const { data, error } = await supabase
-    .from("orders")
-    .select(orderSelect)
-    .eq("id", orderId)
-    .single();
-
-  if (error) throw error;
-
-  return mapOrder(data as OrderRow);
-}
-
-export async function auditReceiptReprint(orderId: string) {
-  const { error } = await supabase.rpc("audit_receipt_reprint", { target_order_id: orderId });
-  if (error) throw error;
+function isMissingDisplayNameError(error: { message?: string } | null) {
+  return Boolean(error?.message?.toLowerCase().includes("display_name"));
 }

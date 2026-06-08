@@ -62,4 +62,13 @@
   .pos-scrollbar::-webkit-scrollbar-thumb:hover {
     background: #8bc34a;
   }
+
+  .date-input::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0;
+    position: absolute;
+    inset: 0;
+    height: 100%;
+    width: 100%;
+  }
 }
