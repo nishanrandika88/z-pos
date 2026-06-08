@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDown,
-  CheckCircle2,
   CreditCard,
   Minus,
   Plus,
@@ -11,7 +10,6 @@ import {
   Trash2,
   UserCircle,
   Wallet,
-  X,
 } from "lucide-react";
 import type { Discount, Item } from "@/domain/catalog/types";
 import type { OrderDraft, PaymentDetails } from "@/domain/orders/types";
@@ -31,11 +29,12 @@ import { findBestAutomaticDiscount } from "@/features/pos/pos.service";
 import { useOrderTotals, usePosStore } from "@/features/pos/stores/pos.store";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
+import { itemPlaceholderImage } from "@/shared/lib/assets";
+import { NoticeToast, type Notice } from "@/shared/ui/notice-toast";
 
 const currency = new Intl.NumberFormat("en-LK", { style: "currency", currency: "LKR" });
 const emptyItems: Item[] = [];
 const emptyDiscounts: Discount[] = [];
-type Notice = { type: "success" | "error"; message: string } | null;
 type CreateOrderVariables = { draft: OrderDraft; receiptWindow: Window | null };
 
 export function PosPage() {
@@ -43,7 +42,7 @@ export function PosPage() {
   const [term, setTerm] = useState("");
   const [debouncedTerm, setDebouncedTerm] = useState("");
   const [category, setCategory] = useState("Lunch");
-  const [notice, setNotice] = useState<Notice>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const profile = useAuthStore((state) => state.profile);
   const userDisplayName = profile?.displayName || profile?.fullName || "Admin";
@@ -56,17 +55,17 @@ export function PosPage() {
     },
     onSuccess(order, variables) {
       void printReceipt(order, variables.receiptWindow).catch((error) => {
-        setNotice({ type: "error", message: error instanceof Error ? error.message : "Could not print receipt." });
+        setNotice({ tone: "error", message: error instanceof Error ? error.message : "Could not print receipt." });
       });
       addCachedOrder(order);
       queryClient.setQueryData<OrderSummary[]>(["orders", {}], (current) => mergeRecentOrder(current, order));
       void queryClient.invalidateQueries({ queryKey: ["orders"] });
       clearCart();
-      setNotice({ type: "success", message: `Order ${order.orderNumber} saved and sent to print.` });
+      setNotice({ tone: "success", message: `Order ${order.orderNumber} saved and sent to print.` });
     },
     onError(error, variables) {
       variables.receiptWindow?.close();
-      setNotice({ type: "error", message: error.message });
+      setNotice({ tone: "error", message: error.message });
     },
   });
   const { data: activeItems = emptyItems } = useQuery({
@@ -120,13 +119,6 @@ export function PosPage() {
       writeCachedActiveDiscounts(discounts);
     }
   }, [discounts]);
-
-  useEffect(() => {
-    if (!notice) return;
-
-    const timeoutId = window.setTimeout(() => setNotice(null), 3500);
-    return () => window.clearTimeout(timeoutId);
-  }, [notice]);
 
   const exactBarcodeMatch = useMemo(
     () =>
@@ -215,7 +207,7 @@ export function PosPage() {
 
     const salePayment = selectedPayment();
     if (salePayment.method === "CARD" && (!salePayment.cardType || !salePayment.bankName.trim() || !/^\d{4}$/.test(salePayment.last4))) {
-      setNotice({ type: "error", message: "Enter card type, bank name, and the last 4 card digits." });
+      setNotice({ tone: "error", message: "Enter card type, bank name, and the last 4 card digits." });
       return;
     }
 
@@ -279,14 +271,14 @@ export function PosPage() {
                 return (
                   <button
                     key={item.id}
-                    className="group relative rounded-2xl bg-white p-3 text-center shadow-sm transition hover:shadow-lg"
+                    className="group relative rounded-2xl border border-brand-forest/10 bg-white p-3 text-center shadow-sm transition hover:-translate-y-0.5 hover:border-brand-orange/25 hover:bg-brand-lime/10 hover:shadow-lg"
                     onClick={() => addItem(item)}
                   >
                     {ruleDiscount ? <DiscountPill className="absolute right-2 top-2" percentage={ruleDiscount.percentage} /> : null}
-                    <div className="mx-auto h-16 w-16 overflow-hidden rounded-full shadow-[0_8px_18px_rgba(0,0,0,.12)] sm:h-20 sm:w-20">
+                    <div className="mx-auto h-16 w-16 overflow-hidden rounded-full bg-brand-cream shadow-[0_8px_18px_rgba(0,0,0,.12)] ring-4 ring-white sm:h-20 sm:w-20">
                       <img
                         className="h-full w-full object-cover transition group-hover:scale-105"
-                        src={item.image}
+                        src={item.image ?? itemPlaceholderImage}
                         alt={item.itemName}
                         loading="lazy"
                       />
@@ -484,26 +476,6 @@ export function PosPage() {
           </Button>
         </div>
       </aside>
-    </div>
-  );
-}
-
-function NoticeToast({ notice, onClose }: { notice: Exclude<Notice, null>; onClose: () => void }) {
-  const isSuccess = notice.type === "success";
-
-  return (
-    <div
-      className={[
-        "absolute right-4 top-4 z-20 flex max-w-[calc(100%-2rem)] items-center gap-3 rounded-full border bg-white px-4 py-3 text-sm font-semibold shadow-xl",
-        isSuccess ? "border-brand-fresh/40 text-brand-forest" : "border-brand-orange/40 text-destructive",
-      ].join(" ")}
-      role="status"
-    >
-      {isSuccess ? <CheckCircle2 className="h-5 w-5 shrink-0" /> : <X className="h-5 w-5 shrink-0" />}
-      <span>{notice.message}</span>
-      <button className="grid h-7 w-7 place-items-center rounded-full text-brand-espresso/50 hover:bg-brand-cream" onClick={onClose} aria-label="Close notification">
-        <X className="h-4 w-4" />
-      </button>
     </div>
   );
 }

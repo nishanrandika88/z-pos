@@ -168,10 +168,29 @@ export async function reorderCategories(input: ReorderInput): Promise<void> {
   await saveDisplayOrder("categories", input.orderedIds);
 }
 
-export async function deactivateCategory(id: string): Promise<void> {
+export async function archiveCategory(id: string): Promise<void> {
+  const { count, error: countError } = await supabase
+    .from("items")
+    .select("id", { count: "exact", head: true })
+    .eq("category_id", id);
+
+  if (countError) throw countError;
+  if ((count ?? 0) > 0) {
+    throw new Error("Archive the items in this category before archiving the category.");
+  }
+
   const { error } = await supabase
     .from("categories")
     .update({ active: false })
+    .eq("id", id);
+
+  if (error) throw error;
+}
+
+export async function restoreCategory(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("categories")
+    .update({ active: true })
     .eq("id", id);
 
   if (error) throw error;
@@ -317,10 +336,19 @@ export async function reorderItems(input: ReorderInput): Promise<void> {
   await saveDisplayOrder("items", input.orderedIds);
 }
 
-export async function deactivateItem(id: string): Promise<void> {
+export async function archiveItem(id: string): Promise<void> {
   const { error } = await supabase
     .from("items")
     .update({ active: false, availability: false })
+    .eq("id", id);
+
+  if (error) throw error;
+}
+
+export async function restoreItem(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("items")
+    .update({ active: true, availability: true })
     .eq("id", id);
 
   if (error) throw error;
