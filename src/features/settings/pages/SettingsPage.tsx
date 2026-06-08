@@ -11,6 +11,7 @@ import {
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
+import { NoticeToast, type Notice } from "@/shared/ui/notice-toast";
 
 const defaults = (branchId: string): ReceiptSettingsForm => ({
   branchId,
@@ -31,7 +32,7 @@ const defaults = (branchId: string): ReceiptSettingsForm => ({
 export function SettingsPage() {
   const profile = useAuthStore((state) => state.profile);
   const branchId = profile?.branchId;
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const [form, setForm] = useState<ReceiptSettingsForm>(() => defaults(branchId ?? ""));
 
   const { data: settings, isLoading, error } = useQuery({
@@ -49,7 +50,10 @@ export function SettingsPage() {
     mutationFn: saveCompanySettings,
     onSuccess(saved) {
       setForm(saved);
-      setNotice("Receipt settings saved.");
+      setNotice({ tone: "success", message: "Receipt settings saved." });
+    },
+    onError(error) {
+      setNotice({ tone: "error", message: error.message });
     },
   });
 
@@ -69,7 +73,7 @@ export function SettingsPage() {
     event.preventDefault();
     setNotice(null);
     if (!branchId || !form.companyName.trim() || !form.address.trim() || !form.phone.trim() || !form.receiptFooter.trim() || !form.thankYouMessage.trim()) {
-      setNotice("Shop name, address, phone, bottom message, and thank you message are required.");
+      setNotice({ tone: "warning", message: "Shop name, address, phone, bottom message, and thank you message are required." });
       return;
     }
 
@@ -82,6 +86,7 @@ export function SettingsPage() {
         <h1 className="text-2xl font-semibold">Settings</h1>
         <p className="text-sm text-muted-foreground">Company, receipt, and printer configuration.</p>
       </div>
+      {notice ? <NoticeToast notice={notice} onClose={() => setNotice(null)} /> : null}
 
       <form className="grid gap-3 xl:grid-cols-[1fr_340px]" onSubmit={onSave}>
         <Card>
@@ -180,9 +185,7 @@ export function SettingsPage() {
                 <Save className="h-4 w-4" />
                 {saveMutation.isPending ? "Saving..." : "Save Settings"}
               </Button>
-              {notice ? <p className="text-sm text-brand-espresso/70">{notice}</p> : null}
               {error ? <p className="text-sm text-destructive">{error.message}</p> : null}
-              {saveMutation.error ? <p className="text-sm text-destructive">{saveMutation.error.message}</p> : null}
             </div>
           </CardContent>
         </Card>
