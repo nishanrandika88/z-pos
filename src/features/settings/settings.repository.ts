@@ -1,4 +1,5 @@
 import { supabase } from "@/shared/lib/supabase";
+import { compressImage } from "@/shared/lib/image-compression";
 
 const companySettingsCacheKey = "z-pos:settings:company:v1";
 const maxCacheAgeMs = 24 * 60 * 60 * 1000;
@@ -10,13 +11,10 @@ export interface ReceiptSettingsForm {
   address: string;
   phone: string;
   email: string;
-  taxNumber: string;
+  logoUrl: string;
   currency: string;
   receiptFooter: string;
   thankYouMessage: string;
-  exchangePolicyMessage: string;
-  noCashRefundMessage: string;
-  showNoCashRefund: boolean;
   taxRate: number;
 }
 
@@ -28,17 +26,15 @@ interface SettingsRow {
   phone: string | null;
   email: string | null;
   tax_number: string | null;
+  logo_url?: string | null;
   currency: string;
   receipt_footer: string | null;
   thank_you_message?: string | null;
-  exchange_policy_message?: string | null;
-  no_cash_refund_message?: string | null;
-  show_no_cash_refund?: boolean | null;
   tax_rate: number | string;
 }
 
 const selectWithReceiptMessages =
-  "id, branch_id, company_name, address, phone, email, tax_number, currency, receipt_footer, thank_you_message, exchange_policy_message, no_cash_refund_message, show_no_cash_refund, tax_rate";
+  "id, branch_id, company_name, address, phone, email, tax_number, logo_url, currency, receipt_footer, thank_you_message, tax_rate";
 const selectWithoutReceiptMessages =
   "id, branch_id, company_name, address, phone, email, tax_number, currency, receipt_footer, tax_rate";
 
@@ -74,13 +70,11 @@ export async function saveCompanySettings(input: ReceiptSettingsForm): Promise<R
     address: input.address.trim(),
     phone: input.phone.trim(),
     email: input.email.trim() || null,
-    tax_number: input.taxNumber.trim() || null,
+    tax_number: null,
+    logo_url: input.logoUrl.trim() || null,
     currency: input.currency.trim() || "LKR",
     receipt_footer: input.receiptFooter.trim(),
     thank_you_message: input.thankYouMessage.trim(),
-    exchange_policy_message: input.exchangePolicyMessage.trim(),
-    no_cash_refund_message: input.noCashRefundMessage.trim(),
-    show_no_cash_refund: input.showNoCashRefund,
     tax_rate: input.taxRate,
   };
 
@@ -99,7 +93,7 @@ export async function saveCompanySettings(input: ReceiptSettingsForm): Promise<R
       address: input.address.trim(),
       phone: input.phone.trim(),
       email: input.email.trim() || null,
-      tax_number: input.taxNumber.trim() || null,
+      tax_number: null,
       currency: input.currency.trim() || "LKR",
       receipt_footer: input.receiptFooter.trim(),
       tax_rate: input.taxRate,
@@ -118,6 +112,28 @@ export async function saveCompanySettings(input: ReceiptSettingsForm): Promise<R
   const settings = mapSettings(data);
   writeCachedCompanySettings(settings);
   return settings;
+}
+
+export async function uploadCompanyLogo(branchId: string, file: File): Promise<string> {
+  const image = await compressImage(file);
+  const objectPath = `${branchId}/${Date.now()}-${image.fileName}`;
+
+  const { error } = await supabase.storage
+    .from("brand-assets")
+    .upload(objectPath, image.blob, {
+      contentType: image.contentType,
+      upsert: true,
+    });
+
+  if (error) {
+    if (error.message.toLowerCase().includes("bucket")) {
+      throw new Error("Storage bucket 'brand-assets' was not found. Run the latest Supabase migration before uploading logos.");
+    }
+    throw error;
+  }
+
+  const { data } = supabase.storage.from("brand-assets").getPublicUrl(objectPath);
+  return data.publicUrl;
 }
 
 export function readCachedCompanySettings(): ReceiptSettingsForm | undefined {
@@ -165,24 +181,19 @@ function mapSettings(row: SettingsRow): ReceiptSettingsForm {
     address: row.address ?? "",
     phone: row.phone ?? "",
     email: row.email ?? "",
-    taxNumber: row.tax_number ?? "",
+    logoUrl: row.logo_url ?? "/brand/logo.png",
     currency: row.currency,
     receiptFooter: row.receipt_footer ?? "Thank you. Come again.",
     thankYouMessage: row.thank_you_message ?? row.receipt_footer ?? "Thank you. Come again.",
-    exchangePolicyMessage: row.exchange_policy_message ?? "Items with proof of purchase may be exchanged within five days.",
-    noCashRefundMessage: row.no_cash_refund_message ?? "No cash refund",
-    showNoCashRefund: row.show_no_cash_refund ?? true,
     taxRate: Number(row.tax_rate),
   };
 }
 
-function withReceiptDefaults(row: Omit<SettingsRow, "thank_you_message" | "exchange_policy_message" | "no_cash_refund_message" | "show_no_cash_refund">): SettingsRow {
+function withReceiptDefaults(row: Omit<SettingsRow, "thank_you_message" | "logo_url">): SettingsRow {
   return {
     ...row,
     thank_you_message: row.receipt_footer ?? "Thank you. Come again.",
-    exchange_policy_message: "Items with proof of purchase may be exchanged within five days.",
-    no_cash_refund_message: "No cash refund",
-    show_no_cash_refund: true,
+    logo_url: "/brand/logo.png",
   };
 }
 
@@ -190,8 +201,6 @@ function isMissingReceiptSettingsError(error: { message?: string } | null) {
   const message = error?.message?.toLowerCase() ?? "";
   return (
     message.includes("thank_you_message") ||
-    message.includes("exchange_policy_message") ||
-    message.includes("no_cash_refund_message") ||
-    message.includes("show_no_cash_refund")
+    message.includes("logo_url")
   );
 }

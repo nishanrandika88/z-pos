@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Download, FileSpreadsheet, RefreshCw } from "lucide-react";
+import { Download, FileSpreadsheet, RefreshCw, X } from "lucide-react";
 import {
   buildItemSales,
   catalogRows,
@@ -56,8 +56,13 @@ export function ReportsPage() {
     void (isCatalogReport ? catalogQuery.refetch() : ordersQuery.refetch());
   }
 
+  function clearFilters() {
+    setDateFrom("");
+    setDateTo("");
+  }
+
   function exportReport() {
-    const suffix = isCatalogReport ? "catalog" : `${dateFrom}_to_${dateTo}`;
+    const suffix = isCatalogReport ? "catalog" : `${dateFrom || "all"}_to_${dateTo || "all"}`;
     if (reportType === "sales") {
       downloadCsv(`sales-summary-${suffix}.csv`, [
         {
@@ -84,9 +89,13 @@ export function ReportsPage() {
           <h1 className="text-2xl font-semibold">Reports</h1>
           <p className="text-muted-foreground">Sales, order, item sales, and catalog exports for Excel.</p>
         </div>
-        <div className="grid gap-2 sm:grid-cols-[160px_160px_auto_auto]">
+        <div className="grid gap-2 sm:grid-cols-[160px_160px_auto_auto_auto]">
           <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} disabled={isCatalogReport} />
           <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} disabled={isCatalogReport} />
+          <Button variant="outline" onClick={clearFilters} disabled={isCatalogReport || (!dateFrom && !dateTo)}>
+            <X className="h-4 w-4" />
+            Clear
+          </Button>
           <Button variant="outline" onClick={refresh} disabled={isFetching}>
             <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
             Refresh
@@ -114,6 +123,8 @@ export function ReportsPage() {
         ))}
       </div>
 
+      {!isCatalogReport ? <TotalSalesStrip summary={summary} dateFrom={dateFrom} dateTo={dateTo} /> : null}
+
       {error ? <div className="rounded-md border border-destructive/30 bg-white p-3 text-sm text-destructive">{error.message}</div> : null}
 
       {reportType === "sales" ? <SalesReport summary={summary} /> : null}
@@ -121,6 +132,29 @@ export function ReportsPage() {
       {reportType === "items" ? <ItemSalesReport rows={itemSales} /> : null}
       {reportType === "catalog" ? <CatalogReport items={catalogItems} /> : null}
     </div>
+  );
+}
+
+function TotalSalesStrip({ summary, dateFrom, dateTo }: { summary: ReturnType<typeof summarizeOrders>; dateFrom: string; dateTo: string }) {
+  const rangeText =
+    dateFrom && dateTo
+      ? `${dateFrom} to ${dateTo}`
+      : dateFrom
+        ? `From ${dateFrom}`
+        : dateTo
+          ? `Until ${dateTo}`
+          : "All available dates";
+
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-medium text-muted-foreground">Total sale</p>
+          <p className="text-xs text-brand-espresso/60">{rangeText}</p>
+        </div>
+        <p className="text-2xl font-bold text-brand-forest">{currency.format(summary.grandTotal)}</p>
+      </CardContent>
+    </Card>
   );
 }
 

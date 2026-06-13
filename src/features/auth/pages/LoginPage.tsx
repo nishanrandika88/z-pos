@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link, useNavigate } from "react-router";
-import { LockKeyhole, Mail } from "lucide-react";
+import { Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
 import { loginSchema, type LoginForm } from "@/features/auth/auth.schemas";
 import { useAuthStore } from "@/features/auth/stores/auth.store";
 import { BrandLogo } from "@/shared/ui/brand-logo";
@@ -14,6 +14,7 @@ export function LoginPage() {
   const navigate = useNavigate();
   const login = useAuthStore((state) => state.login);
   const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
   const form = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "", rememberMe: true },
@@ -50,7 +51,20 @@ export function LoginPage() {
               <span className="text-sm font-medium">Password</span>
               <div className="relative">
                 <LockKeyhole className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input className="pl-9" type="password" autoComplete="current-password" {...form.register("password")} />
+                <Input
+                  className="pl-9 pr-11"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  {...form.register("password")}
+                />
+                <button
+                  className="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-muted"
+                  type="button"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  onClick={() => setShowPassword((current) => !current)}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
             </label>
             <label className="flex items-center gap-2 text-sm">

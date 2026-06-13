@@ -53,6 +53,8 @@ export function PosPage() {
   const userDisplayName = profile?.displayName || profile?.fullName || "Admin";
   const { lines, addItem, removeItem, setQuantity, clearCart, setDiscounts, setManualDiscount, setPayment, payment } = usePosStore();
   const totals = useOrderTotals();
+  const cashTendered = payment?.method === "CASH" ? payment.amountTendered : totals.grandTotal;
+  const cashBalance = Math.max(0, cashTendered - totals.grandTotal);
   const createOrderMutation = useMutation<OrderSummary, Error, CreateOrderVariables>({
     async mutationFn({ draft }) {
       const orderId = await createOrder(draft);
@@ -179,6 +181,14 @@ export function PosPage() {
   }, [clearCart]);
 
   function selectedPayment(): PaymentDetails {
+    if (payment?.method === "CASH") {
+      return {
+        method: "CASH",
+        amountTendered: payment.amountTendered,
+        balanceReturned: Math.max(0, payment.amountTendered - totals.grandTotal),
+      };
+    }
+
     if (payment) return payment;
 
     return {
@@ -211,10 +221,23 @@ export function PosPage() {
     });
   }
 
+  function updateCashTendered(value: string) {
+    const amountTendered = Math.max(0, Number(value) || 0);
+    setPayment({
+      method: "CASH",
+      amountTendered,
+      balanceReturned: Math.max(0, amountTendered - totals.grandTotal),
+    });
+  }
+
   function completeSale() {
     if (lines.length === 0 || createOrderMutation.isPending) return;
 
     const salePayment = selectedPayment();
+    if (salePayment.method === "CASH" && salePayment.amountTendered < totals.grandTotal) {
+      setNotice({ tone: "warning", message: "Cash received is less than the bill total." });
+      return;
+    }
     if (salePayment.method === "CARD" && (!salePayment.cardType || !salePayment.bankName.trim() || !/^\d{4}$/.test(salePayment.last4))) {
       setNotice({ tone: "error", message: "Enter card type, bank name, and the last 4 card digits." });
       return;
@@ -467,6 +490,36 @@ export function PosPage() {
               Card
             </Button>
           </div>
+          {lines.length > 0 && (payment?.method === "CASH" || !payment) ? (
+            <div className="mt-3 grid gap-2 rounded-2xl border border-brand-forest/10 bg-brand-cream p-2.5">
+              <label className="block">
+                <span className="mb-1 block text-xs font-semibold text-brand-espresso/70">Customer paid</span>
+                <Input
+                  className="h-10 rounded-full border-brand-forest/15 bg-white text-sm"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={cashTendered || ""}
+                  onChange={(event) => updateCashTendered(event.target.value)}
+                  placeholder="Enter cash amount"
+                />
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-xl bg-white px-3 py-2">
+                  <p className="text-[11px] font-semibold uppercase text-brand-espresso/50">Bill total</p>
+                  <p className="text-sm font-bold text-brand-forest">{currency.format(totals.grandTotal)}</p>
+                </div>
+                <div className="rounded-xl bg-white px-3 py-2">
+                  <p className="text-[11px] font-semibold uppercase text-brand-espresso/50">
+                    {cashTendered >= totals.grandTotal ? "Balance" : "Short"}
+                  </p>
+                  <p className={["text-sm font-bold", cashTendered >= totals.grandTotal ? "text-brand-fresh" : "text-destructive"].join(" ")}>
+                    {currency.format(cashTendered >= totals.grandTotal ? cashBalance : totals.grandTotal - cashTendered)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
           {lines.length > 0 && payment?.method === "CARD" ? (
             <div className="mt-3 grid gap-2 rounded-2xl border border-brand-forest/10 bg-brand-cream p-2.5">
               <div className="grid gap-2 sm:grid-cols-2">

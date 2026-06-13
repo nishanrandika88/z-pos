@@ -1,11 +1,14 @@
-import { FormEvent, useEffect, useState } from "react";
+import { type ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Printer, Save, Store } from "lucide-react";
+import { ImageUp, Printer, Save, Store } from "lucide-react";
 import { useAuthStore } from "@/features/auth/stores/auth.store";
+import { receiptHtml } from "@/features/orders/receipt-print";
+import type { OrderSummary } from "@/features/orders/types";
 import {
   loadCompanySettings,
   readCachedCompanySettings,
   saveCompanySettings,
+  uploadCompanyLogo,
   type ReceiptSettingsForm,
 } from "@/features/settings/settings.repository";
 import { Button } from "@/shared/ui/button";
@@ -19,22 +22,53 @@ const defaults = (branchId: string): ReceiptSettingsForm => ({
   address: "",
   phone: "",
   email: "",
-  taxNumber: "",
+  logoUrl: "/brand/logo.png",
   currency: "LKR",
   receiptFooter: "Thank you. Come again.",
   thankYouMessage: "Thank you. Come again.",
-  exchangePolicyMessage: "Items with proof of purchase may be exchanged within five days.",
-  noCashRefundMessage: "No cash refund",
-  showNoCashRefund: true,
   taxRate: 0,
 });
+
+const sampleReceiptOrder: OrderSummary = {
+  id: "preview",
+  orderNumber: "INV-20260613-000001",
+  status: "COMPLETED",
+  cashierName: "Cashier Name",
+  subtotal: 1200,
+  automaticDiscountTotal: 0,
+  manualDiscountTotal: 100,
+  taxTotal: 0,
+  grandTotal: 1100,
+  createdAt: new Date("2026-06-13T10:30:00").toISOString(),
+  completedAt: new Date("2026-06-13T10:30:00").toISOString(),
+  items: [
+    {
+      id: "preview-line-1",
+      itemCode: "ITEM-001",
+      itemName: "Sample Item",
+      quantity: 2,
+      unitPrice: 600,
+      discountTotal: 100,
+      lineTotal: 1100,
+    },
+  ],
+  payments: [
+    {
+      id: "preview-payment",
+      method: "CASH",
+      amount: 1100,
+      amountTendered: 1500,
+      balanceReturned: 400,
+    },
+  ],
+};
 
 export function SettingsPage() {
   const profile = useAuthStore((state) => state.profile);
   const branchId = profile?.branchId;
   const [notice, setNotice] = useState<Notice | null>(null);
   const [form, setForm] = useState<ReceiptSettingsForm>(() => defaults(branchId ?? ""));
-  const previewAddressLines = splitReceiptAddress(form.address || "Address");
+  const previewHtml = useMemo(() => receiptHtml(sampleReceiptOrder, form), [form]);
 
   const { data: settings, isLoading, error } = useQuery({
     queryKey: ["company-settings", branchId],
@@ -58,6 +92,19 @@ export function SettingsPage() {
       setNotice({ tone: "error", message: error.message });
     },
   });
+  const uploadLogoMutation = useMutation({
+    mutationFn(file: File) {
+      if (!branchId) throw new Error("Branch is not available.");
+      return uploadCompanyLogo(branchId, file);
+    },
+    onSuccess(logoUrl) {
+      updateForm("logoUrl", logoUrl);
+      setNotice({ tone: "success", message: "Logo uploaded. Save settings to keep it on receipts." });
+    },
+    onError(error) {
+      setNotice({ tone: "error", message: error.message });
+    },
+  });
 
   useEffect(() => {
     if (settings) {
@@ -74,12 +121,20 @@ export function SettingsPage() {
   function onSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setNotice(null);
-    if (!branchId || !form.companyName.trim() || !form.address.trim() || !form.phone.trim() || !form.receiptFooter.trim() || !form.thankYouMessage.trim()) {
-      setNotice({ tone: "warning", message: "Shop name, address, phone, bottom message, and thank you message are required." });
+    if (!branchId || !form.companyName.trim()) {
+      setNotice({ tone: "warning", message: "Shop name is required." });
       return;
     }
 
     saveMutation.mutate({ ...form, branchId });
+  }
+
+  function onLogoSelected(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setNotice(null);
+    uploadLogoMutation.mutate(file);
   }
 
   return (
@@ -108,14 +163,12 @@ export function SettingsPage() {
               value={form.phone}
               onChange={(event) => updateForm("phone", event.target.value)}
               placeholder="Phone numbers"
-              required
             />
             <Input
               className="h-10 md:col-span-2"
               value={form.address}
               onChange={(event) => updateForm("address", event.target.value)}
               placeholder="Address"
-              required
             />
             <Input
               className="h-10"
@@ -123,12 +176,6 @@ export function SettingsPage() {
               onChange={(event) => updateForm("email", event.target.value)}
               placeholder="Email"
               type="email"
-            />
-            <Input
-              className="h-10"
-              value={form.taxNumber}
-              onChange={(event) => updateForm("taxNumber", event.target.value)}
-              placeholder="Tax number"
             />
             <Input
               className="h-10"
@@ -145,43 +192,34 @@ export function SettingsPage() {
               onChange={(event) => updateForm("taxRate", Number(event.target.value) || 0)}
               placeholder="Tax rate"
             />
-            <Input
-              className="h-10 md:col-span-2"
-              value={form.exchangePolicyMessage}
-              onChange={(event) => updateForm("exchangePolicyMessage", event.target.value)}
-              placeholder="Exchange policy message"
-            />
+            <div className="grid gap-2 md:col-span-2 md:grid-cols-[72px_1fr_auto] md:items-center">
+              <div className="grid h-16 w-16 place-items-center overflow-hidden rounded-xl border bg-white">
+                <img className="h-full w-full object-contain p-2" src={form.logoUrl || "/brand/logo.png"} alt="Receipt logo" />
+              </div>
+              <Input
+                className="h-10"
+                value={form.logoUrl}
+                onChange={(event) => updateForm("logoUrl", event.target.value)}
+                placeholder="Logo URL"
+              />
+              <label className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-full border bg-white px-4 text-sm font-medium hover:bg-white">
+                <ImageUp className="h-4 w-4" />
+                {uploadLogoMutation.isPending ? "Uploading..." : "Upload"}
+                <input className="sr-only" type="file" accept="image/*" onChange={onLogoSelected} disabled={!branchId || uploadLogoMutation.isPending} />
+              </label>
+            </div>
             <Input
               className="h-10 md:col-span-2"
               value={form.thankYouMessage}
               onChange={(event) => updateForm("thankYouMessage", event.target.value)}
               placeholder="Thank you message"
-              required
             />
             <Input
               className="h-10 md:col-span-2"
               value={form.receiptFooter}
               onChange={(event) => updateForm("receiptFooter", event.target.value)}
               placeholder="Bottom message"
-              required
             />
-            <div className="grid gap-2 md:col-span-2 md:grid-cols-[1fr_auto]">
-              <Input
-                className="h-10"
-                value={form.noCashRefundMessage}
-                onChange={(event) => updateForm("noCashRefundMessage", event.target.value)}
-                placeholder="No cash refund message"
-              />
-              <label className="flex h-10 items-center gap-2 rounded-full border bg-white px-3 text-sm font-medium">
-                <input
-                  className="h-4 w-4 accent-black"
-                  type="checkbox"
-                  checked={form.showNoCashRefund}
-                  onChange={(event) => updateForm("showNoCashRefund", event.target.checked)}
-                />
-                Show
-              </label>
-            </div>
             <div className="flex flex-col gap-2 md:col-span-2 sm:flex-row sm:items-center">
               <Button type="submit" disabled={!branchId || saveMutation.isPending || isLoading}>
                 <Save className="h-4 w-4" />
@@ -197,47 +235,10 @@ export function SettingsPage() {
             <h2 className="flex items-center gap-2 font-semibold"><Printer className="h-4 w-4" />Receipt Preview</h2>
           </CardHeader>
           <CardContent className="p-3">
-              <div className="mx-auto max-w-80 rounded-md border bg-white p-4 font-mono text-xs text-brand-espresso shadow-sm">
-              <h3 className="text-center text-xl font-black leading-none text-black">{form.companyName || "Shop Name"}</h3>
-              <div className="mt-2 text-center">
-                {previewAddressLines.map((line) => (
-                  <p key={line}>{line}</p>
-                ))}
-              </div>
-              <p className="text-center">Tel: {form.phone || "Phone"}</p>
-              <div className="my-3 border-t border-dashed border-black" />
-              <div className="flex justify-between"><span>Receipt</span><span>INV-000001</span></div>
-              <div className="my-3 border-t border-dashed border-black" />
-              <div className="flex justify-between"><span>Net Amount</span><strong>1,200.00</strong></div>
-              <div className="my-3 border-t border-dashed border-black" />
-              <p className="text-center">{form.exchangePolicyMessage}</p>
-              <div className="my-3 border-t border-dashed border-black" />
-              <p className="text-center">{form.thankYouMessage}</p>
-              {form.showNoCashRefund ? <p className="text-center text-brand-espresso/70">{form.noCashRefundMessage}</p> : null}
-              <p className="mt-2 text-center text-brand-espresso/70">{form.receiptFooter}</p>
-            </div>
+            <iframe className="mx-auto h-[620px] w-[340px] rounded-md border bg-white shadow-sm" srcDoc={previewHtml} title="Receipt preview" />
           </CardContent>
         </Card>
       </form>
     </div>
   );
-}
-
-function splitReceiptAddress(address: string) {
-  const normalized = address.trim().replace(/\s+/g, " ");
-  const commaParts = normalized.split(",").map((part) => part.trim()).filter(Boolean);
-
-  if (commaParts.length >= 2) {
-    const midpoint = Math.ceil(commaParts.length / 2);
-    return [
-      commaParts.slice(0, midpoint).join(", "),
-      commaParts.slice(midpoint).join(", "),
-    ].filter(Boolean);
-  }
-
-  const words = normalized.split(" ");
-  if (words.length <= 4 || normalized.length <= 32) return [normalized];
-
-  const midpoint = Math.ceil(words.length / 2);
-  return [words.slice(0, midpoint).join(" "), words.slice(midpoint).join(" ")];
 }
