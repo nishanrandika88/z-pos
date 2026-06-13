@@ -63,7 +63,7 @@ export function AppShell() {
     <div className="min-h-dvh bg-background text-foreground">
       <Button
         className={cn(
-          "fixed bottom-4 z-30 hidden h-12 w-12 rounded-full border border-brand-forest/15 bg-white text-brand-forest shadow-lg hover:bg-white lg:grid",
+          "fixed bottom-14 z-30 hidden h-12 w-12 rounded-full border border-brand-forest/15 bg-white text-brand-forest shadow-lg hover:bg-white lg:grid",
           isNavCollapsed ? "left-4" : "left-[108px]",
         )}
         size="icon"
