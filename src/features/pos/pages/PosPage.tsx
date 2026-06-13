@@ -9,7 +9,6 @@ import {
   RefreshCw,
   Search,
   Trash2,
-  UserCircle,
   Wallet,
   X,
 } from "lucide-react";
@@ -51,7 +50,6 @@ export function PosPage() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const profile = useAuthStore((state) => state.profile);
-  const userDisplayName = profile?.displayName || profile?.fullName || "Admin";
   const { lines, addItem, removeItem, setQuantity, clearCart, setDiscounts, setManualDiscount, setPayment, payment } = usePosStore();
   const { data: companySettings } = useQuery({
     queryKey: ["company-settings", profile?.branchId],
@@ -380,7 +378,7 @@ export function PosPage() {
       </section>
 
       <aside className="flex min-h-[68dvh] flex-col border-t border-brand-forest/10 bg-white lg:h-dvh lg:min-h-0 lg:border-l lg:border-t-0">
-        <div className="flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-brand-forest/10 px-3 py-2 sm:px-5">
+        <div className="flex min-h-14 shrink-0 items-center gap-3 border-b border-brand-forest/10 px-3 py-2 sm:px-5">
           <div className="flex min-w-0 items-center gap-3">
             <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-brand-orange/12 text-brand-orange">
               <ReceiptText className="h-5 w-5" />
@@ -391,10 +389,6 @@ export function PosPage() {
                 {lines.length === 0 ? "Ready for items" : `${lines.length} ${lines.length === 1 ? "item" : "items"} selected`}
               </p>
             </div>
-          </div>
-          <div className="flex min-w-0 items-center gap-2 rounded-full border border-brand-forest/10 bg-white px-3 py-1.5 text-sm font-semibold text-brand-forest shadow-sm">
-            <UserCircle className="h-5 w-5 shrink-0" />
-            <span className="max-w-[7rem] truncate sm:max-w-40">{userDisplayName}</span>
           </div>
         </div>
 
