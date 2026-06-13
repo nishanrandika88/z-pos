@@ -29,6 +29,7 @@ import type { OrderSummary } from "@/features/orders/types";
 import { createOrder, listActiveItems, loadActiveDiscounts, searchItems } from "@/features/pos/pos.repository";
 import { findBestAutomaticDiscount } from "@/features/pos/pos.service";
 import { useOrderTotals, usePosStore } from "@/features/pos/stores/pos.store";
+import { loadCompanySettings, readCachedCompanySettings } from "@/features/settings/settings.repository";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { syncAppData } from "@/shared/lib/app-sync";
@@ -52,7 +53,20 @@ export function PosPage() {
   const profile = useAuthStore((state) => state.profile);
   const userDisplayName = profile?.displayName || profile?.fullName || "Admin";
   const { lines, addItem, removeItem, setQuantity, clearCart, setDiscounts, setManualDiscount, setPayment, payment } = usePosStore();
-  const totals = useOrderTotals();
+  const { data: companySettings } = useQuery({
+    queryKey: ["company-settings", profile?.branchId],
+    queryFn: () => loadCompanySettings(profile?.branchId ?? ""),
+    initialData: () => {
+      const cached = readCachedCompanySettings();
+      return cached?.branchId === profile?.branchId ? cached : undefined;
+    },
+    enabled: Boolean(profile?.branchId),
+    staleTime: 15 * 60 * 1000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: false,
+  });
+  const taxRate = companySettings?.taxRate ?? 0;
+  const totals = useOrderTotals(taxRate);
   const cashTendered = payment?.method === "CASH" ? payment.amountTendered : totals.grandTotal;
   const cashBalance = Math.max(0, cashTendered - totals.grandTotal);
   const createOrderMutation = useMutation<OrderSummary, Error, CreateOrderVariables>({
@@ -262,6 +276,7 @@ export function PosPage() {
       await Promise.all([
         queryClient.refetchQueries({ queryKey: ["items", "active"], type: "active" }),
         queryClient.refetchQueries({ queryKey: ["discounts", "active"], type: "active" }),
+        queryClient.refetchQueries({ queryKey: ["company-settings", profile?.branchId], type: "active" }),
       ]);
       setNotice({ tone: "success", message: "POS data synced." });
     } catch (error) {
@@ -458,7 +473,7 @@ export function PosPage() {
           <SummaryRow label="Subtotal" value={totals.subtotal} />
           <SummaryRow label="Rule discount" value={-totals.automaticDiscount} />
           <SummaryRow label="Bill discount" value={-totals.manualDiscount} />
-          <SummaryRow label="Tax" value={totals.tax} />
+          <SummaryRow label={taxRate > 0 ? `Tax (${taxRate}%)` : "Tax"} value={totals.tax} />
           <div className="mt-3 flex items-center justify-between text-xl font-bold text-brand-forest">
             <span>Total</span>
             <span>{currency.format(totals.grandTotal)}</span>

@@ -180,6 +180,7 @@ export function receiptHtml(order: OrderSummary, settings: ReceiptSettings) {
             color: #111;
             font-family: "Receipt Regular", "Merchant Copy", "OCR-B", "Letter Gothic Std", "Courier New", Consolas, monospace;
             font-size: 12px;
+            font-weight: 600;
             line-height: 1.18;
           }
           .receipt {
@@ -208,7 +209,10 @@ export function receiptHtml(order: OrderSummary, settings: ReceiptSettings) {
             overflow-wrap: anywhere;
           }
           .right { text-align: right; }
-          .muted { color: #333; }
+          .muted {
+            color: #333;
+            font-weight: 500;
+          }
           .rule {
             margin: 8px 0;
             border-top: 1px dashed #111;
@@ -240,7 +244,7 @@ export function receiptHtml(order: OrderSummary, settings: ReceiptSettings) {
           th {
             padding: 0 0 4px;
             text-align: left;
-            font-weight: 700;
+            font-weight: 800;
           }
           thead tr {
             border-bottom: 1px dashed #111;
@@ -254,17 +258,25 @@ export function receiptHtml(order: OrderSummary, settings: ReceiptSettings) {
           .col-disc { width: 38px; padding-left: 3px; }
           .col-qty { width: 40px; }
           .col-amt { width: 62px; }
+          .item-name-row td {
+            padding-top: 5px;
+            padding-bottom: 1px;
+          }
+          .item-detail-row td {
+            padding-top: 0;
+            padding-bottom: 5px;
+          }
           .product-name {
             overflow-wrap: anywhere;
-            font-weight: 700;
+            font-weight: 800;
           }
           .product-code {
-            margin-top: 1px;
             color: #333;
+            font-size: 10px;
           }
           .total {
             margin-top: 5px;
-            font-size: 18px;
+            font-size: 16px;
             font-weight: 900;
           }
           .payment-note {
@@ -294,12 +306,13 @@ export function receiptHtml(order: OrderSummary, settings: ReceiptSettings) {
 
 function itemRow(index: number, item: OrderSummary["items"][number]) {
   return `
-    <tr>
+    <tr class="item-name-row">
       <td class="col-no">${index}</td>
-      <td>
-        <div class="product-name">${escapeHtml(item.itemName)}</div>
-        <div class="product-code">${escapeHtml(item.itemCode)}</div>
-      </td>
+      <td colspan="5"><div class="product-name">${escapeHtml(item.itemName)}</div></td>
+    </tr>
+    <tr class="item-detail-row">
+      <td class="col-no"></td>
+      <td><div class="product-code">${escapeHtml(item.itemCode)}</div></td>
       <td class="right">${formatAmount(item.unitPrice)}</td>
       <td class="right">${formatDiscountPercent(item)}</td>
       <td class="right">${formatQuantity(item.quantity)}</td>

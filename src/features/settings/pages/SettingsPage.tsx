@@ -145,7 +145,7 @@ export function SettingsPage() {
       </div>
       {notice ? <NoticeToast notice={notice} onClose={() => setNotice(null)} /> : null}
 
-      <form className="grid gap-3 xl:grid-cols-[1fr_340px]" onSubmit={onSave}>
+      <form className="grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,380px)]" onSubmit={onSave}>
         <Card>
           <CardHeader className="p-3">
             <h2 className="flex items-center gap-2 font-semibold"><Store className="h-4 w-4" />Receipt Details</h2>
@@ -183,15 +183,18 @@ export function SettingsPage() {
               onChange={(event) => updateForm("currency", event.target.value)}
               placeholder="Currency"
             />
-            <Input
-              className="h-10"
-              type="number"
-              min={0}
-              step="0.01"
-              value={form.taxRate}
-              onChange={(event) => updateForm("taxRate", Number(event.target.value) || 0)}
-              placeholder="Tax rate"
-            />
+            <label className="block space-y-1">
+              <span className="text-xs font-semibold text-brand-espresso/70">Tax rate (%)</span>
+              <Input
+                className="h-10"
+                type="number"
+                min={0}
+                step="0.01"
+                value={form.taxRate}
+                onChange={(event) => updateForm("taxRate", Number(event.target.value) || 0)}
+                placeholder="0"
+              />
+            </label>
             <div className="grid gap-2 md:col-span-2 md:grid-cols-[72px_1fr_auto] md:items-center">
               <div className="grid h-16 w-16 place-items-center overflow-hidden rounded-xl border bg-white">
                 <img className="h-full w-full object-contain p-2" src={form.logoUrl || "/brand/logo.png"} alt="Receipt logo" />
@@ -234,8 +237,12 @@ export function SettingsPage() {
           <CardHeader className="p-3">
             <h2 className="flex items-center gap-2 font-semibold"><Printer className="h-4 w-4" />Receipt Preview</h2>
           </CardHeader>
-          <CardContent className="p-3">
-            <iframe className="mx-auto h-[620px] w-[340px] rounded-md border bg-white shadow-sm" srcDoc={previewHtml} title="Receipt preview" />
+          <CardContent className="overflow-x-auto p-3">
+            <iframe
+              className="mx-auto h-[620px] w-[320px] max-w-full rounded-md border bg-white shadow-sm sm:w-[340px]"
+              srcDoc={previewHtml}
+              title="Receipt preview"
+            />
           </CardContent>
         </Card>
       </form>

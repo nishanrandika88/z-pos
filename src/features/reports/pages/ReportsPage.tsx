@@ -57,8 +57,9 @@ export function ReportsPage() {
   }
 
   function clearFilters() {
-    setDateFrom("");
-    setDateTo("");
+    const today = localDate();
+    setDateFrom(today);
+    setDateTo(today);
   }
 
   function exportReport() {

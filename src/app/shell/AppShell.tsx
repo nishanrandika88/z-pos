@@ -123,21 +123,54 @@ export function AppShell() {
           !isNavCollapsed && "lg:ml-[95px]",
         )}
       >
-        {!isPos ? (
-        <header className="sticky top-0 z-10 flex min-h-16 shrink-0 items-center justify-between gap-3 border-b border-brand-forest/10 bg-white px-3 py-2 sm:px-4 lg:px-6">
-          <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
-            <span className="truncate text-2xl font-extrabold uppercase text-brand-forest">ZESTORA</span>
-            <span className="rounded-full bg-brand-orange px-3 py-1 text-sm font-black text-white">POS</span>
+        <header
+          className={cn(
+            "sticky top-0 z-10 shrink-0 border-b border-brand-forest/10 bg-white px-3 py-2 sm:px-4 lg:px-6",
+            isPos && "lg:hidden",
+          )}
+        >
+          <div className="flex min-h-12 items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
+              <span className="truncate text-2xl font-extrabold uppercase text-brand-forest">ZESTORA</span>
+              <span className="rounded-full bg-brand-orange px-3 py-1 text-sm font-black text-white">POS</span>
+            </div>
+            <div className="flex min-w-0 items-center gap-2 rounded-full border border-brand-forest/10 bg-white px-3 py-2 text-sm font-semibold text-brand-forest">
+              <UserCircle className="h-5 w-5 shrink-0" />
+              <span className="max-w-[7rem] truncate sm:max-w-48">{userDisplayName}</span>
+              <span className="rounded-full bg-brand-cream px-2 py-0.5 text-[11px] font-bold text-brand-espresso">
+                {profile?.role ?? "ADMIN"}
+              </span>
+            </div>
           </div>
-          <div className="flex min-w-0 items-center gap-2 rounded-full border border-brand-forest/10 bg-white px-3 py-2 text-sm font-semibold text-brand-forest">
-            <UserCircle className="h-5 w-5 shrink-0" />
-            <span className="max-w-[8rem] truncate sm:max-w-48">{userDisplayName}</span>
-            <span className="hidden rounded-full bg-brand-cream px-2 py-0.5 text-[11px] font-bold text-brand-espresso sm:inline-flex">
-              {profile?.role ?? "ADMIN"}
-            </span>
+          <div className="pos-scrollbar -mx-3 mt-2 flex gap-1 overflow-x-auto px-3 pb-1 lg:hidden">
+            {visibleItems.map((item) => (
+              <NavLink
+                key={item.href}
+                to={item.href}
+                title={item.label}
+                className={({ isActive }) =>
+                  cn(
+                    "flex h-11 shrink-0 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition",
+                    isActive
+                      ? "border-brand-orange bg-brand-orange text-white"
+                      : "border-brand-forest/10 bg-white text-brand-espresso/70",
+                  )
+                }
+              >
+                <item.icon className="h-4 w-4" />
+                <span>{item.label}</span>
+              </NavLink>
+            ))}
+            <button
+              className="flex h-11 shrink-0 items-center gap-2 rounded-full border border-brand-forest/10 bg-white px-3 text-xs font-semibold text-brand-espresso/70"
+              onClick={() => void logout()}
+              type="button"
+            >
+              <LogOut className="h-4 w-4" />
+              Logout
+            </button>
           </div>
         </header>
-        ) : null}
         <main
           className={cn(
             isPos
@@ -149,28 +182,6 @@ export function AppShell() {
         </main>
       </div>
 
-      {!isPos ? (
-      <nav
-        aria-label="Primary navigation"
-        className="fixed inset-x-0 bottom-0 z-20 flex overflow-x-auto border-t border-brand-forest/10 bg-white px-2 pb-[max(env(safe-area-inset-bottom),0px)] shadow-[0_-8px_24px_rgba(59,47,47,.08)] lg:hidden"
-      >
-        {visibleItems.map((item) => (
-          <NavLink
-            key={item.href}
-            to={item.href}
-            className={({ isActive }) =>
-              cn(
-                "flex min-h-16 min-w-[76px] flex-1 flex-col items-center justify-center gap-1 px-2 text-xs font-semibold text-brand-espresso/60",
-                isActive && "text-brand-orange",
-              )
-            }
-          >
-            <item.icon className="h-5 w-5" />
-            <span className="max-w-full truncate">{item.label}</span>
-          </NavLink>
-        ))}
-      </nav>
-      ) : null}
     </div>
   );
 }
