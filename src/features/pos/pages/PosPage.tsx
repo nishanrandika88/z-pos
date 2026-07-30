@@ -2,14 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDown,
-  CheckCircle2,
   CreditCard,
   Minus,
   Plus,
   ReceiptText,
+  RefreshCw,
   Search,
   Trash2,
-  UserCircle,
   Wallet,
   X,
 } from "lucide-react";
@@ -29,26 +28,45 @@ import type { OrderSummary } from "@/features/orders/types";
 import { createOrder, listActiveItems, loadActiveDiscounts, searchItems } from "@/features/pos/pos.repository";
 import { findBestAutomaticDiscount } from "@/features/pos/pos.service";
 import { useOrderTotals, usePosStore } from "@/features/pos/stores/pos.store";
+import { loadCompanySettings, readCachedCompanySettings } from "@/features/settings/settings.repository";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
+import { syncAppData } from "@/shared/lib/app-sync";
+import { itemPlaceholderImage } from "@/shared/lib/assets";
+import { NoticeToast, type Notice } from "@/shared/ui/notice-toast";
 
 const currency = new Intl.NumberFormat("en-LK", { style: "currency", currency: "LKR" });
 const emptyItems: Item[] = [];
 const emptyDiscounts: Discount[] = [];
-type Notice = { type: "success" | "error"; message: string } | null;
+const allCategory = "All";
 type CreateOrderVariables = { draft: OrderDraft; receiptWindow: Window | null };
 
 export function PosPage() {
   const queryClient = useQueryClient();
   const [term, setTerm] = useState("");
   const [debouncedTerm, setDebouncedTerm] = useState("");
-  const [category, setCategory] = useState("Lunch");
-  const [notice, setNotice] = useState<Notice>(null);
+  const [category, setCategory] = useState(allCategory);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const profile = useAuthStore((state) => state.profile);
-  const userDisplayName = profile?.displayName || profile?.fullName || "Admin";
   const { lines, addItem, removeItem, setQuantity, clearCart, setDiscounts, setManualDiscount, setPayment, payment } = usePosStore();
-  const totals = useOrderTotals();
+  const { data: companySettings } = useQuery({
+    queryKey: ["company-settings", profile?.branchId],
+    queryFn: () => loadCompanySettings(profile?.branchId ?? ""),
+    initialData: () => {
+      const cached = readCachedCompanySettings();
+      return cached?.branchId === profile?.branchId ? cached : undefined;
+    },
+    enabled: Boolean(profile?.branchId),
+    staleTime: 15 * 60 * 1000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: false,
+  });
+  const taxRate = companySettings?.taxRate ?? 0;
+  const totals = useOrderTotals(taxRate);
+  const cashTendered = payment?.method === "CASH" ? payment.amountTendered : totals.grandTotal;
+  const cashBalance = Math.max(0, cashTendered - totals.grandTotal);
   const createOrderMutation = useMutation<OrderSummary, Error, CreateOrderVariables>({
     async mutationFn({ draft }) {
       const orderId = await createOrder(draft);
@@ -56,17 +74,17 @@ export function PosPage() {
     },
     onSuccess(order, variables) {
       void printReceipt(order, variables.receiptWindow).catch((error) => {
-        setNotice({ type: "error", message: error instanceof Error ? error.message : "Could not print receipt." });
+        setNotice({ tone: "error", message: error instanceof Error ? error.message : "Could not print receipt." });
       });
       addCachedOrder(order);
       queryClient.setQueryData<OrderSummary[]>(["orders", {}], (current) => mergeRecentOrder(current, order));
       void queryClient.invalidateQueries({ queryKey: ["orders"] });
       clearCart();
-      setNotice({ type: "success", message: `Order ${order.orderNumber} saved and sent to print.` });
+      setNotice({ tone: "success", message: `Order ${order.orderNumber} saved and sent to print.` });
     },
     onError(error, variables) {
       variables.receiptWindow?.close();
-      setNotice({ type: "error", message: error.message });
+      setNotice({ tone: "error", message: error.message });
     },
   });
   const { data: activeItems = emptyItems } = useQuery({
@@ -74,6 +92,7 @@ export function PosPage() {
     queryFn: listActiveItems,
     initialData: readCachedActiveItems,
     staleTime: 15 * 60 * 1000,
+    refetchOnMount: "always",
     refetchOnWindowFocus: false,
   });
   const normalizedTerm = term.trim().toLowerCase();
@@ -99,6 +118,7 @@ export function PosPage() {
     queryFn: loadActiveDiscounts,
     initialData: readCachedActiveDiscounts,
     staleTime: 15 * 60 * 1000,
+    refetchOnMount: "always",
     refetchOnWindowFocus: false,
   });
 
@@ -121,13 +141,6 @@ export function PosPage() {
     }
   }, [discounts]);
 
-  useEffect(() => {
-    if (!notice) return;
-
-    const timeoutId = window.setTimeout(() => setNotice(null), 3500);
-    return () => window.clearTimeout(timeoutId);
-  }, [notice]);
-
   const exactBarcodeMatch = useMemo(
     () =>
       activeItems.find((item) => item.barcode && item.barcode === term.trim()) ??
@@ -139,7 +152,7 @@ export function PosPage() {
     const searchResults = localSearchResults.length > 0 ? localSearchResults : remoteSearchResults;
     const source = normalizedTerm ? searchResults : activeItems;
     return source.filter((item) => {
-      const matchesCategory = item.categoryName === category || normalizedTerm.length > 0;
+      const matchesCategory = category === allCategory || item.categoryName === category || normalizedTerm.length > 0;
       const matchesTerm =
         !normalizedTerm ||
         item.itemName.toLowerCase().includes(normalizedTerm) ||
@@ -149,13 +162,15 @@ export function PosPage() {
     });
   }, [activeItems, category, localSearchResults, normalizedTerm, remoteSearchResults]);
 
+  const visibleProductGroups = useMemo(() => groupProductsByCategory(visibleProducts), [visibleProducts]);
+
   const categories = useMemo(() => {
     return Array.from(new Set(activeItems.map((item) => item.categoryName))).filter(Boolean);
   }, [activeItems]);
 
   useEffect(() => {
-    if (categories.length > 0 && !categories.includes(category)) {
-      setCategory(categories[0]);
+    if (category !== allCategory && categories.length > 0 && !categories.includes(category)) {
+      setCategory(allCategory);
     }
   }, [categories, category]);
 
@@ -178,6 +193,14 @@ export function PosPage() {
   }, [clearCart]);
 
   function selectedPayment(): PaymentDetails {
+    if (payment?.method === "CASH") {
+      return {
+        method: "CASH",
+        amountTendered: payment.amountTendered,
+        balanceReturned: Math.max(0, payment.amountTendered - totals.grandTotal),
+      };
+    }
+
     if (payment) return payment;
 
     return {
@@ -210,12 +233,25 @@ export function PosPage() {
     });
   }
 
+  function updateCashTendered(value: string) {
+    const amountTendered = Math.max(0, Number(value) || 0);
+    setPayment({
+      method: "CASH",
+      amountTendered,
+      balanceReturned: Math.max(0, amountTendered - totals.grandTotal),
+    });
+  }
+
   function completeSale() {
     if (lines.length === 0 || createOrderMutation.isPending) return;
 
     const salePayment = selectedPayment();
+    if (salePayment.method === "CASH" && salePayment.amountTendered < totals.grandTotal) {
+      setNotice({ tone: "warning", message: "Cash received is less than the bill total." });
+      return;
+    }
     if (salePayment.method === "CARD" && (!salePayment.cardType || !salePayment.bankName.trim() || !/^\d{4}$/.test(salePayment.last4))) {
-      setNotice({ type: "error", message: "Enter card type, bank name, and the last 4 card digits." });
+      setNotice({ tone: "error", message: "Enter card type, bank name, and the last 4 card digits." });
       return;
     }
 
@@ -231,6 +267,35 @@ export function PosPage() {
     });
   }
 
+  async function syncPosData() {
+    setIsSyncing(true);
+    try {
+      await syncAppData(queryClient);
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ["items", "active"], type: "active" }),
+        queryClient.refetchQueries({ queryKey: ["discounts", "active"], type: "active" }),
+        queryClient.refetchQueries({ queryKey: ["company-settings", profile?.branchId], type: "active" }),
+      ]);
+      setNotice({ tone: "success", message: "POS data synced." });
+    } catch (error) {
+      setNotice({ tone: "error", message: error instanceof Error ? error.message : "Could not sync POS data." });
+    } finally {
+      setIsSyncing(false);
+    }
+  }
+
+  function updateSearch(value: string) {
+    setTerm(value);
+    setCategory(allCategory);
+  }
+
+  function clearSearch() {
+    setTerm("");
+    setDebouncedTerm("");
+    setCategory(allCategory);
+    searchRef.current?.focus();
+  }
+
   return (
     <div className="relative min-h-dvh bg-brand-cream lg:grid lg:h-dvh lg:min-h-0 lg:overflow-hidden lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_420px]">
       {notice ? <NoticeToast notice={notice} onClose={() => setNotice(null)} /> : null}
@@ -243,12 +308,37 @@ export function PosPage() {
               className="h-12 rounded-full border-0 bg-white px-4 pr-11 text-sm shadow-sm"
               placeholder="Search products, scan barcode, or enter item code"
               value={term}
-              onChange={(event) => setTerm(event.target.value)}
+              onChange={(event) => updateSearch(event.target.value)}
             />
+            {term ? (
+              <button
+                className="absolute right-11 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full text-brand-espresso/55 hover:bg-brand-cream"
+                onClick={clearSearch}
+                type="button"
+                aria-label="Clear search"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            ) : null}
           </div>
+          <Button className="h-12 bg-white text-brand-forest hover:bg-white" variant="outline" onClick={syncPosData} disabled={isSyncing}>
+            <RefreshCw className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
+            Sync
+          </Button>
         </div>
 
         <div className="pos-scrollbar -mx-3 flex shrink-0 gap-2 overflow-x-auto px-3 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
+          <button
+            className={[
+              "shrink-0 rounded-full border px-5 py-3 text-sm font-medium transition",
+              category === allCategory
+                ? "border-brand-orange bg-brand-orange text-white"
+                : "border-transparent bg-white text-brand-espresso/70 hover:bg-white",
+            ].join(" ")}
+            onClick={() => setCategory(allCategory)}
+          >
+            All
+          </button>
           {categories.map((name) => (
             <button
               key={name}
@@ -271,45 +361,24 @@ export function PosPage() {
               No active products found
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3 pb-4 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6">
-              {visibleProducts.map((item) => {
-                const ruleDiscount = findBestAutomaticDiscount(item, discounts);
-                const discountedPrice = ruleDiscount ? item.sellingPrice * (1 - ruleDiscount.percentage / 100) : item.sellingPrice;
-
-                return (
-                  <button
-                    key={item.id}
-                    className="group relative rounded-2xl bg-white p-3 text-center shadow-sm transition hover:shadow-lg"
-                    onClick={() => addItem(item)}
-                  >
-                    {ruleDiscount ? <DiscountPill className="absolute right-2 top-2" percentage={ruleDiscount.percentage} /> : null}
-                    <div className="mx-auto h-16 w-16 overflow-hidden rounded-full shadow-[0_8px_18px_rgba(0,0,0,.12)] sm:h-20 sm:w-20">
-                      <img
-                        className="h-full w-full object-cover transition group-hover:scale-105"
-                        src={item.image}
-                        alt={item.itemName}
-                        loading="lazy"
-                      />
-                    </div>
-                    <p className="mt-3 min-h-10 text-sm font-medium leading-5 text-brand-espresso">{item.itemName}</p>
-                    <span className="mt-2 inline-flex flex-col items-center rounded-full bg-brand-cream px-2.5 py-0.5 text-xs font-bold leading-tight text-brand-forest xl:px-3 xl:py-1 xl:text-sm">
-                      {ruleDiscount ? (
-                        <span className="text-[10px] font-semibold text-brand-espresso/45 line-through xl:text-xs">
-                          {currency.format(item.sellingPrice)}
-                        </span>
-                      ) : null}
-                      {currency.format(discountedPrice)}
-                    </span>
-                  </button>
-                );
-              })}
+            <div className="space-y-5 pb-4">
+              {visibleProductGroups.map((group) => (
+                <section key={group.categoryName} className="space-y-2">
+                  <h2 className="text-sm font-black uppercase tracking-wide text-brand-forest">{group.categoryName}</h2>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6">
+                    {group.items.map((item) => (
+                      <ProductCard key={item.id} item={item} discounts={discounts} onAdd={addItem} />
+                    ))}
+                  </div>
+                </section>
+              ))}
             </div>
           )}
         </div>
       </section>
 
       <aside className="flex min-h-[68dvh] flex-col border-t border-brand-forest/10 bg-white lg:h-dvh lg:min-h-0 lg:border-l lg:border-t-0">
-        <div className="flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-brand-forest/10 px-3 py-2 sm:px-5">
+        <div className="flex min-h-14 shrink-0 items-center gap-3 border-b border-brand-forest/10 px-3 py-2 sm:px-5">
           <div className="flex min-w-0 items-center gap-3">
             <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-brand-orange/12 text-brand-orange">
               <ReceiptText className="h-5 w-5" />
@@ -320,10 +389,6 @@ export function PosPage() {
                 {lines.length === 0 ? "Ready for items" : `${lines.length} ${lines.length === 1 ? "item" : "items"} selected`}
               </p>
             </div>
-          </div>
-          <div className="flex min-w-0 items-center gap-2 rounded-full border border-brand-forest/10 bg-white px-3 py-1.5 text-sm font-semibold text-brand-forest shadow-sm">
-            <UserCircle className="h-5 w-5 shrink-0" />
-            <span className="max-w-[7rem] truncate sm:max-w-40">{userDisplayName}</span>
           </div>
         </div>
 
@@ -402,7 +467,7 @@ export function PosPage() {
           <SummaryRow label="Subtotal" value={totals.subtotal} />
           <SummaryRow label="Rule discount" value={-totals.automaticDiscount} />
           <SummaryRow label="Bill discount" value={-totals.manualDiscount} />
-          <SummaryRow label="Tax" value={totals.tax} />
+          <SummaryRow label={taxRate > 0 ? `Tax (${taxRate}%)` : "Tax"} value={totals.tax} />
           <div className="mt-3 flex items-center justify-between text-xl font-bold text-brand-forest">
             <span>Total</span>
             <span>{currency.format(totals.grandTotal)}</span>
@@ -434,6 +499,36 @@ export function PosPage() {
               Card
             </Button>
           </div>
+          {lines.length > 0 && (payment?.method === "CASH" || !payment) ? (
+            <div className="mt-3 grid gap-2 rounded-2xl border border-brand-forest/10 bg-brand-cream p-2.5">
+              <label className="block">
+                <span className="mb-1 block text-xs font-semibold text-brand-espresso/70">Customer paid</span>
+                <Input
+                  className="h-10 rounded-full border-brand-forest/15 bg-white text-sm"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={cashTendered || ""}
+                  onChange={(event) => updateCashTendered(event.target.value)}
+                  placeholder="Enter cash amount"
+                />
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-xl bg-white px-3 py-2">
+                  <p className="text-[11px] font-semibold uppercase text-brand-espresso/50">Bill total</p>
+                  <p className="text-sm font-bold text-brand-forest">{currency.format(totals.grandTotal)}</p>
+                </div>
+                <div className="rounded-xl bg-white px-3 py-2">
+                  <p className="text-[11px] font-semibold uppercase text-brand-espresso/50">
+                    {cashTendered >= totals.grandTotal ? "Balance" : "Short"}
+                  </p>
+                  <p className={["text-sm font-bold", cashTendered >= totals.grandTotal ? "text-brand-fresh" : "text-destructive"].join(" ")}>
+                    {currency.format(cashTendered >= totals.grandTotal ? cashBalance : totals.grandTotal - cashTendered)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
           {lines.length > 0 && payment?.method === "CARD" ? (
             <div className="mt-3 grid gap-2 rounded-2xl border border-brand-forest/10 bg-brand-cream p-2.5">
               <div className="grid gap-2 sm:grid-cols-2">
@@ -488,24 +583,45 @@ export function PosPage() {
   );
 }
 
-function NoticeToast({ notice, onClose }: { notice: Exclude<Notice, null>; onClose: () => void }) {
-  const isSuccess = notice.type === "success";
+function ProductCard({ item, discounts, onAdd }: { item: Item; discounts: Discount[]; onAdd: (item: Item) => void }) {
+  const ruleDiscount = findBestAutomaticDiscount(item, discounts);
+  const discountedPrice = ruleDiscount ? item.sellingPrice * (1 - ruleDiscount.percentage / 100) : item.sellingPrice;
 
   return (
-    <div
-      className={[
-        "absolute right-4 top-4 z-20 flex max-w-[calc(100%-2rem)] items-center gap-3 rounded-full border bg-white px-4 py-3 text-sm font-semibold shadow-xl",
-        isSuccess ? "border-brand-fresh/40 text-brand-forest" : "border-brand-orange/40 text-destructive",
-      ].join(" ")}
-      role="status"
+    <button
+      className="group relative rounded-2xl bg-white p-3 text-center shadow-sm transition hover:shadow-lg"
+      onClick={() => onAdd(item)}
     >
-      {isSuccess ? <CheckCircle2 className="h-5 w-5 shrink-0" /> : <X className="h-5 w-5 shrink-0" />}
-      <span>{notice.message}</span>
-      <button className="grid h-7 w-7 place-items-center rounded-full text-brand-espresso/50 hover:bg-brand-cream" onClick={onClose} aria-label="Close notification">
-        <X className="h-4 w-4" />
-      </button>
-    </div>
+      {ruleDiscount ? <DiscountPill className="absolute right-2 top-2" percentage={ruleDiscount.percentage} /> : null}
+      <div className="mx-auto h-16 w-16 overflow-hidden rounded-full shadow-[0_8px_18px_rgba(0,0,0,.12)] sm:h-20 sm:w-20">
+        <img
+          className="h-full w-full object-cover transition group-hover:scale-105"
+          src={item.image ?? itemPlaceholderImage}
+          alt={item.itemName}
+          loading="lazy"
+        />
+      </div>
+      <p className="mt-3 min-h-10 text-sm font-medium leading-5 text-brand-espresso">{item.itemName}</p>
+      <span className="mt-2 inline-flex flex-col items-center rounded-full bg-brand-cream px-2.5 py-0.5 text-xs font-bold leading-tight text-brand-forest xl:px-3 xl:py-1 xl:text-sm">
+        {ruleDiscount ? (
+          <span className="text-[10px] font-semibold text-brand-espresso/45 line-through xl:text-xs">
+            {currency.format(item.sellingPrice)}
+          </span>
+        ) : null}
+        {currency.format(discountedPrice)}
+      </span>
+    </button>
   );
+}
+
+function groupProductsByCategory(items: Item[]) {
+  const groups = new Map<string, Item[]>();
+  items.forEach((item) => {
+    const categoryName = item.categoryName || "Uncategorized";
+    groups.set(categoryName, [...(groups.get(categoryName) ?? []), item]);
+  });
+
+  return Array.from(groups, ([categoryName, groupItems]) => ({ categoryName, items: groupItems }));
 }
 
 function SummaryRow({ label, value }: { label: string; value: number }) {

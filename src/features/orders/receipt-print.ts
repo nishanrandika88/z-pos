@@ -11,13 +11,12 @@ interface ReceiptSettings {
   address?: string;
   phone?: string;
   email?: string;
-  taxNumber?: string;
+  logoUrl?: string;
   receiptFooter?: string;
   thankYouMessage?: string;
-  exchangePolicyMessage?: string;
-  noCashRefundMessage?: string;
-  showNoCashRefund?: boolean;
 }
+
+const defaultLogoUrl = "/brand/logo.png";
 
 export function openReceiptWindow() {
   const popup = window.open("", "receipt-print", "width=420,height=720");
@@ -50,11 +49,9 @@ export async function printReceipt(order: OrderSummary, receiptWindow = openRece
 async function loadReceiptSettings(): Promise<ReceiptSettings> {
   const fallback = {
     companyName: "Zestora",
+    logoUrl: defaultLogoUrl,
     receiptFooter: "Powered by Zestora",
     thankYouMessage: "Thank you. Come again.",
-    exchangePolicyMessage: "Items with proof of purchase may be exchanged within five days.",
-    noCashRefundMessage: "No cash refund",
-    showNoCashRefund: true,
   };
   const cached = readCachedCompanySettings();
   if (cached) return cached;
@@ -62,23 +59,21 @@ async function loadReceiptSettings(): Promise<ReceiptSettings> {
   try {
     let { data, error } = await supabase
       .from("company_settings")
-      .select("branch_id, company_name, address, phone, email, tax_number, currency, receipt_footer, thank_you_message, exchange_policy_message, no_cash_refund_message, show_no_cash_refund, tax_rate")
+      .select("branch_id, company_name, address, phone, email, logo_url, currency, receipt_footer, thank_you_message, tax_rate")
       .limit(1)
       .maybeSingle();
 
     if (isMissingReceiptSettingsError(error)) {
       const fallbackQuery = await supabase
         .from("company_settings")
-        .select("branch_id, company_name, address, phone, email, tax_number, currency, receipt_footer, tax_rate")
+        .select("branch_id, company_name, address, phone, email, currency, receipt_footer, tax_rate")
         .limit(1)
         .maybeSingle();
       data = fallbackQuery.data
         ? {
             ...fallbackQuery.data,
             thank_you_message: fallbackQuery.data.receipt_footer,
-            exchange_policy_message: fallback.exchangePolicyMessage,
-            no_cash_refund_message: fallback.noCashRefundMessage,
-            show_no_cash_refund: fallback.showNoCashRefund,
+            logo_url: fallback.logoUrl,
           }
         : null;
       error = fallbackQuery.error;
@@ -92,13 +87,10 @@ async function loadReceiptSettings(): Promise<ReceiptSettings> {
       address: data.address ?? "",
       phone: data.phone ?? "",
       email: data.email ?? "",
-      taxNumber: data.tax_number ?? "",
+      logoUrl: data.logo_url ?? fallback.logoUrl,
       currency: data.currency ?? "LKR",
       receiptFooter: data.receipt_footer ?? fallback.receiptFooter,
       thankYouMessage: data.thank_you_message ?? data.receipt_footer ?? fallback.thankYouMessage,
-      exchangePolicyMessage: data.exchange_policy_message ?? fallback.exchangePolicyMessage,
-      noCashRefundMessage: data.no_cash_refund_message ?? fallback.noCashRefundMessage,
-      showNoCashRefund: data.show_no_cash_refund ?? fallback.showNoCashRefund,
       taxRate: Number(data.tax_rate ?? 0),
     };
     writeCachedCompanySettings(settings);
@@ -108,12 +100,72 @@ async function loadReceiptSettings(): Promise<ReceiptSettings> {
   }
 }
 
-function receiptHtml(order: OrderSummary, settings: ReceiptSettings) {
+export function receiptHtml(order: OrderSummary, settings: ReceiptSettings) {
   const payment = order.payments[0];
   const createdAt = new Date(order.createdAt);
   const totalQty = order.items.reduce((sum, item) => sum + item.quantity, 0);
   const totalDiscount = order.automaticDiscountTotal + order.manualDiscountTotal;
   const itemRows = order.items.map((item, index) => itemRow(index + 1, item)).join("");
+  const logoUrl = settings.logoUrl?.trim() || defaultLogoUrl;
+  const headerLines = [
+    addressBlock(settings.address),
+    settings.phone ? `<div class="center">Tel: ${escapeHtml(settings.phone)}</div>` : "",
+    settings.email ? `<div class="center">${escapeHtml(settings.email)}</div>` : "",
+  ].filter(Boolean).join("");
+  const footerSections = [
+    settings.thankYouMessage ? `<div class="footer">${escapeHtml(settings.thankYouMessage)}</div>` : "",
+    settings.receiptFooter ? `<div class="footer muted">${escapeHtml(settings.receiptFooter)}</div>` : "",
+  ].filter(Boolean);
+  const sections = [
+    `
+      <section>
+        <img class="logo" src="${escapeHtml(logoUrl)}" alt="Receipt logo" />
+        ${settings.companyName ? `<h1 class="shop-name">${escapeHtml(settings.companyName.toUpperCase())}</h1>` : ""}
+        ${headerLines}
+      </section>
+    `,
+    `
+      <section class="meta-list">
+        <div class="line"><span>Invoice No</span><span>${escapeHtml(order.orderNumber)}</span></div>
+        <div class="line"><span>Cashier</span><span>${escapeHtml(order.cashierName)}</span></div>
+        <div class="line"><span>Date</span><span>${escapeHtml(dateOnly.format(createdAt))}</span></div>
+        <div class="line"><span>Time</span><span>${escapeHtml(timeOnly.format(createdAt))}</span></div>
+      </section>
+    `,
+    `
+      <section>
+        <table class="items-table">
+          <thead>
+            <tr>
+              <th class="col-no">#</th>
+              <th>Item</th>
+              <th class="col-price right">Price</th>
+              <th class="col-disc right">Disc%</th>
+              <th class="col-qty right">Qty</th>
+              <th class="col-amt right">Amount</th>
+            </tr>
+          </thead>
+          <tbody>${itemRows}</tbody>
+        </table>
+      </section>
+    `,
+    `
+      <section>
+        ${amountLine("Subtotal", order.subtotal)}
+        ${totalDiscount > 0 ? amountLine("Discount", -totalDiscount) : ""}
+        ${order.taxTotal > 0 ? amountLine("Tax", order.taxTotal) : ""}
+        <div class="line total"><span>Net Amount</span><span>${formatAmount(order.grandTotal)}</span></div>
+        ${paymentBlock(payment)}
+      </section>
+    `,
+    `
+      <section class="meta-list">
+        <div class="line"><span>Total Products</span><span>${order.items.length}</span></div>
+        <div class="line"><span>Total Qty</span><span>${formatQuantity(totalQty)}</span></div>
+      </section>
+    `,
+    footerSections.length > 0 ? `<section>${footerSections.join("")}</section>` : "",
+  ].filter((section) => section.trim());
 
   return `
     <!doctype html>
@@ -126,8 +178,9 @@ function receiptHtml(order: OrderSummary, settings: ReceiptSettings) {
             margin: 0;
             background: #fff;
             color: #111;
-            font-family: "Courier New", Consolas, monospace;
+            font-family: "Receipt Regular", "Merchant Copy", "OCR-B", "Letter Gothic Std", "Courier New", Consolas, monospace;
             font-size: 12px;
+            font-weight: 600;
             line-height: 1.18;
           }
           .receipt {
@@ -143,9 +196,23 @@ function receiptHtml(order: OrderSummary, settings: ReceiptSettings) {
             font-weight: 900;
             letter-spacing: .2px;
           }
+          .logo {
+            display: block;
+            width: 42px;
+            height: 42px;
+            object-fit: contain;
+            margin: 0 auto 5px;
+          }
           .center { text-align: center; }
+          .address-line {
+            text-align: center;
+            overflow-wrap: anywhere;
+          }
           .right { text-align: right; }
-          .muted { color: #333; }
+          .muted {
+            color: #333;
+            font-weight: 500;
+          }
           .rule {
             margin: 8px 0;
             border-top: 1px dashed #111;
@@ -156,6 +223,9 @@ function receiptHtml(order: OrderSummary, settings: ReceiptSettings) {
             grid-template-columns: 1fr 1fr;
             column-gap: 12px;
             row-gap: 2px;
+          }
+          .meta-list {
+            display: block;
           }
           .line {
             display: flex;
@@ -174,7 +244,7 @@ function receiptHtml(order: OrderSummary, settings: ReceiptSettings) {
           th {
             padding: 0 0 4px;
             text-align: left;
-            font-weight: 700;
+            font-weight: 800;
           }
           thead tr {
             border-bottom: 1px dashed #111;
@@ -188,17 +258,25 @@ function receiptHtml(order: OrderSummary, settings: ReceiptSettings) {
           .col-disc { width: 38px; padding-left: 3px; }
           .col-qty { width: 40px; }
           .col-amt { width: 62px; }
+          .item-name-row td {
+            padding-top: 5px;
+            padding-bottom: 1px;
+          }
+          .item-detail-row td {
+            padding-top: 0;
+            padding-bottom: 5px;
+          }
           .product-name {
             overflow-wrap: anywhere;
-            font-weight: 700;
+            font-weight: 800;
           }
           .product-code {
-            margin-top: 1px;
             color: #333;
+            font-size: 10px;
           }
           .total {
             margin-top: 5px;
-            font-size: 18px;
+            font-size: 16px;
             font-weight: 900;
           }
           .payment-note {
@@ -219,54 +297,7 @@ function receiptHtml(order: OrderSummary, settings: ReceiptSettings) {
       </head>
       <body>
         <div class="receipt">
-          <h1 class="shop-name">${escapeHtml(requiredText(settings.companyName, "Zestora").toUpperCase())}</h1>
-          ${settings.address ? `<div class="center">${escapeHtml(settings.address)}</div>` : ""}
-          ${settings.phone ? `<div class="center">Tel: ${escapeHtml(settings.phone)}</div>` : ""}
-          ${settings.email ? `<div class="center">${escapeHtml(settings.email)}</div>` : ""}
-          ${settings.taxNumber ? `<div class="center">Tax No: ${escapeHtml(settings.taxNumber)}</div>` : ""}
-
-          <div class="rule"></div>
-          <div class="meta">
-            <div>Cashier : ${escapeHtml(order.cashierName)}</div>
-            <div>Receipt : ${escapeHtml(order.orderNumber)}</div>
-            <div>Date : ${escapeHtml(dateOnly.format(createdAt))}</div>
-            <div>Time : ${escapeHtml(timeOnly.format(createdAt))}</div>
-          </div>
-          <div class="rule"></div>
-
-          <table class="items-table">
-            <thead>
-              <tr>
-                <th class="col-no">#</th>
-                <th>Item</th>
-                <th class="col-price right">Price</th>
-                <th class="col-disc right">Disc%</th>
-                <th class="col-qty right">Qty</th>
-                <th class="col-amt right">Amount</th>
-              </tr>
-            </thead>
-            <tbody>${itemRows}</tbody>
-          </table>
-
-          <div class="rule"></div>
-          ${amountLine("Subtotal", order.subtotal)}
-          ${totalDiscount > 0 ? amountLine("Discount", -totalDiscount) : ""}
-          ${order.taxTotal > 0 ? amountLine("Tax", order.taxTotal) : ""}
-          <div class="line total"><span>Net Amount</span><span>${formatAmount(order.grandTotal)}</span></div>
-          ${paymentBlock(payment)}
-
-          <div class="rule"></div>
-          <div class="meta">
-            <div>Total Products : ${order.items.length}</div>
-            <div>Total Qty : ${formatQuantity(totalQty)}</div>
-          </div>
-
-          <div class="rule"></div>
-          ${settings.exchangePolicyMessage ? `<div class="footer">${escapeHtml(settings.exchangePolicyMessage)}</div>` : ""}
-          <div class="rule"></div>
-          <div class="footer">${escapeHtml(settings.thankYouMessage || "Thank you. Come again.")}</div>
-          ${settings.showNoCashRefund ? `<div class="footer muted">${escapeHtml(settings.noCashRefundMessage || "No cash refund")}</div>` : ""}
-          ${settings.receiptFooter ? `<div class="footer muted">${escapeHtml(settings.receiptFooter)}</div>` : ""}
+          ${sections.join('<div class="rule"></div>')}
         </div>
       </body>
     </html>
@@ -275,12 +306,13 @@ function receiptHtml(order: OrderSummary, settings: ReceiptSettings) {
 
 function itemRow(index: number, item: OrderSummary["items"][number]) {
   return `
-    <tr>
+    <tr class="item-name-row">
       <td class="col-no">${index}</td>
-      <td>
-        <div class="product-name">${escapeHtml(item.itemName)}</div>
-        <div class="product-code">${escapeHtml(item.itemCode)}</div>
-      </td>
+      <td colspan="5"><div class="product-name">${escapeHtml(item.itemName)}</div></td>
+    </tr>
+    <tr class="item-detail-row">
+      <td class="col-no"></td>
+      <td><div class="product-code">${escapeHtml(item.itemCode)}</div></td>
       <td class="right">${formatAmount(item.unitPrice)}</td>
       <td class="right">${formatDiscountPercent(item)}</td>
       <td class="right">${formatQuantity(item.quantity)}</td>
@@ -320,6 +352,32 @@ function paymentBlock(payment: OrderPayment | undefined) {
   `;
 }
 
+function addressBlock(address: string | undefined) {
+  const lines = splitAddress(address);
+  if (lines.length === 0) return "";
+  return lines.map((line) => `<div class="address-line">${escapeHtml(line)}</div>`).join("");
+}
+
+function splitAddress(address: string | undefined) {
+  const normalized = address?.trim().replace(/\s+/g, " ");
+  if (!normalized) return [];
+
+  const commaParts = normalized.split(",").map((part) => part.trim()).filter(Boolean);
+  if (commaParts.length >= 2) {
+    const midpoint = Math.ceil(commaParts.length / 2);
+    return [
+      commaParts.slice(0, midpoint).join(", "),
+      commaParts.slice(midpoint).join(", "),
+    ].filter(Boolean);
+  }
+
+  const words = normalized.split(" ");
+  if (words.length <= 4 || normalized.length <= 32) return [normalized];
+
+  const midpoint = Math.ceil(words.length / 2);
+  return [words.slice(0, midpoint).join(" "), words.slice(midpoint).join(" ")];
+}
+
 function formatAmount(value: number) {
   return amount.format(value);
 }
@@ -347,16 +405,10 @@ function escapeHtml(value: string) {
   });
 }
 
-function requiredText(value: string | undefined, fallback: string) {
-  return value?.trim() || fallback;
-}
-
 function isMissingReceiptSettingsError(error: { message?: string } | null) {
   const message = error?.message?.toLowerCase() ?? "";
   return (
     message.includes("thank_you_message") ||
-    message.includes("exchange_policy_message") ||
-    message.includes("no_cash_refund_message") ||
-    message.includes("show_no_cash_refund")
+    message.includes("logo_url")
   );
 }

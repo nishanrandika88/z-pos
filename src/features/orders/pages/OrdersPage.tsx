@@ -4,12 +4,13 @@ import { CalendarDays, CreditCard, Printer, Search, Wallet, X } from "lucide-rea
 import { can } from "@/features/auth/rbac";
 import { useAuthStore } from "@/features/auth/stores/auth.store";
 import { auditReceiptReprint, listOrders } from "@/features/orders/orders.repository";
-import { readCachedOrders, writeCachedOrders } from "@/features/orders/orders-cache";
+import { writeCachedOrders } from "@/features/orders/orders-cache";
 import { printReceipt } from "@/features/orders/receipt-print";
 import type { OrderFilters, OrderPayment, OrderSummary } from "@/features/orders/types";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
+import { NoticeToast, type Notice } from "@/shared/ui/notice-toast";
 
 const currency = new Intl.NumberFormat("en-LK", { style: "currency", currency: "LKR" });
 const dateTime = new Intl.DateTimeFormat("en-LK", { dateStyle: "medium", timeStyle: "short" });
@@ -24,18 +25,14 @@ export function OrdersPage() {
   const [draftFilters, setDraftFilters] = useState<OrderFilters>({});
   const [page, setPage] = useState(1);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const hasActiveFilters = Boolean(filters.search?.trim() || filters.dateFrom || filters.dateTo);
 
   const { data: orderResult = emptyOrderResult, isFetching, isLoading, error } = useQuery({
-    queryKey: ["orders", filters, page, ordersPageSize],
+    queryKey: ["orders", profile?.id, filters, page, ordersPageSize],
     queryFn: () => listOrders(filters, { page, pageSize: ordersPageSize }),
-    initialData: () => {
-      if (page !== 1) return undefined;
-
-      const cachedOrders = readCachedOrders(filters, { page, pageSize: ordersPageSize });
-      return cachedOrders.length > 0 ? { orders: cachedOrders, hasMore: cachedOrders.length === ordersPageSize } : undefined;
-    },
+    enabled: Boolean(profile?.id),
+    refetchOnMount: "always",
     refetchOnWindowFocus: false,
   });
   const orders = orderResult.orders;
@@ -55,9 +52,9 @@ export function OrdersPage() {
     try {
       await auditReceiptReprint(selectedOrder.id);
       await printReceipt(selectedOrder);
-      setNotice("Receipt reprint audited.");
+      setNotice({ tone: "success", message: "Receipt reprint audited." });
     } catch (printError) {
-      setNotice(printError instanceof Error ? printError.message : "Could not reprint receipt.");
+      setNotice({ tone: "error", message: printError instanceof Error ? printError.message : "Could not reprint receipt." });
     }
   }
 
@@ -86,8 +83,8 @@ export function OrdersPage() {
           <h1 className="text-2xl font-semibold">Orders</h1>
           <p className="text-muted-foreground">Search orders, view details, and reprint receipts when allowed.</p>
         </div>
-        {notice ? <p className="rounded-xl border border-brand-forest/10 bg-white px-4 py-2 text-sm font-medium text-brand-espresso shadow-sm md:max-w-sm">{notice}</p> : null}
       </div>
+      {notice ? <NoticeToast notice={notice} onClose={() => setNotice(null)} /> : null}
 
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_170px_170px_auto_auto]">
         <div className="relative">

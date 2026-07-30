@@ -101,11 +101,11 @@ export const usePosStore = create<PosState>((set) => ({
   },
 }));
 
-export function useOrderTotals() {
+export function useOrderTotals(taxRatePercent = 0) {
   const lines = usePosStore((state) => state.lines);
   const mode = usePosStore((state) => state.manualDiscountMode);
   const value = usePosStore((state) => state.manualDiscountValue);
   const subtotalAfterAuto = lines.reduce((sum, line) => sum + line.lineTotal, 0);
   const manualDiscount = mode === "PERCENTAGE" ? subtotalAfterAuto * (value / 100) : value;
-  return calculateTotals(lines, Math.min(manualDiscount, subtotalAfterAuto));
+  return calculateTotals(lines, Math.min(manualDiscount, subtotalAfterAuto), taxRatePercent);
 }

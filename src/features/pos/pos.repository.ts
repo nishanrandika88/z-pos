@@ -15,7 +15,14 @@ interface ItemRow {
   availability: boolean;
   active: boolean;
   display_order?: number | null;
-  categories: { name?: string; active?: boolean; display_order?: number | null } | { name?: string; active?: boolean; display_order?: number | null }[] | null;
+  categories?: { name?: string; active?: boolean; display_order?: number | null } | { name?: string; active?: boolean; display_order?: number | null }[] | null;
+}
+
+interface CategoryRow {
+  id: string;
+  name: string;
+  active: boolean;
+  display_order?: number | null;
 }
 
 function mapItem(row: ItemRow): Item {
@@ -61,6 +68,33 @@ export async function listActiveItems(): Promise<Item[]> {
     data = (fallback.data?.map((row, index) => ({ ...row, display_order: index + 1 })) ?? null) as ItemRow[] | null;
     error = fallback.error;
   }
+
+  if (isRelationSelectError(error)) {
+    const fallback = await supabase
+      .from("items")
+      .select("id, item_code, barcode, item_name, description, image_url, selling_price, category_id, availability, active, display_order")
+      .eq("active", true)
+      .eq("availability", true)
+      .order("display_order")
+      .order("item_name")
+      .limit(100);
+    data = fallback.data ? await attachCategories(fallback.data as ItemRow[]) : null;
+    error = fallback.error;
+
+    if (isMissingDisplayOrderError(error)) {
+      const displayOrderFallback = await supabase
+        .from("items")
+        .select("id, item_code, barcode, item_name, description, image_url, selling_price, category_id, availability, active")
+        .eq("active", true)
+        .eq("availability", true)
+        .order("item_name")
+        .limit(100);
+      data = displayOrderFallback.data
+        ? await attachCategories(displayOrderFallback.data.map((row, index) => ({ ...row, display_order: index + 1 })) as ItemRow[])
+        : null;
+      error = displayOrderFallback.error;
+    }
+  }
   if (error) throw error;
 
   return sortItems((data ?? []).map(mapItem).filter((item) => item.categoryActive !== false));
@@ -90,6 +124,32 @@ export async function searchItems(term: string): Promise<Item[]> {
       .limit(30);
     data = (fallback.data?.map((row, index) => ({ ...row, display_order: index + 1 })) ?? null) as ItemRow[] | null;
     error = fallback.error;
+  }
+
+  if (isRelationSelectError(error)) {
+    const fallback = await supabase
+      .from("items")
+      .select("id, item_code, barcode, item_name, description, image_url, selling_price, category_id, availability, active, display_order")
+      .eq("active", true)
+      .or(`item_code.ilike.%${normalized}%,barcode.eq.${normalized},item_name.ilike.%${normalized}%`)
+      .order("display_order")
+      .limit(30);
+    data = fallback.data ? await attachCategories(fallback.data as ItemRow[]) : null;
+    error = fallback.error;
+
+    if (isMissingDisplayOrderError(error)) {
+      const displayOrderFallback = await supabase
+        .from("items")
+        .select("id, item_code, barcode, item_name, description, image_url, selling_price, category_id, availability, active")
+        .eq("active", true)
+        .or(`item_code.ilike.%${normalized}%,barcode.eq.${normalized},item_name.ilike.%${normalized}%`)
+        .order("item_name")
+        .limit(30);
+      data = displayOrderFallback.data
+        ? await attachCategories(displayOrderFallback.data.map((row, index) => ({ ...row, display_order: index + 1 })) as ItemRow[])
+        : null;
+      error = displayOrderFallback.error;
+    }
   }
   if (error) throw error;
 
@@ -137,6 +197,37 @@ function firstRelation<T>(relation: T | T[] | null): T | undefined {
   return relation ?? undefined;
 }
 
+async function attachCategories(rows: ItemRow[]): Promise<ItemRow[]> {
+  const categoryIds = Array.from(new Set(rows.map((row) => row.category_id).filter(Boolean)));
+  if (categoryIds.length === 0) return rows.map((row) => ({ ...row, categories: null }));
+
+  const result = await supabase
+    .from("categories")
+    .select("id, name, active, display_order")
+    .in("id", categoryIds);
+  let categories = result.data as CategoryRow[] | null;
+  let error = result.error;
+
+  if (isMissingDisplayOrderError(error)) {
+    const fallback = await supabase
+      .from("categories")
+      .select("id, name, active")
+      .in("id", categoryIds);
+    categories = (fallback.data?.map((category) => ({ ...category, display_order: 0 })) ?? null) as CategoryRow[] | null;
+    error = fallback.error;
+  }
+
+  if (error) throw error;
+
+  const categoryById = new Map((categories ?? []).map((category) => [category.id, category]));
+  return rows.map((row) => ({ ...row, categories: categoryById.get(row.category_id) ?? null }));
+}
+
 function isMissingDisplayOrderError(error: { message?: string } | null) {
   return Boolean(error?.message?.toLowerCase().includes("display_order"));
+}
+
+function isRelationSelectError(error: { message?: string } | null) {
+  const message = error?.message?.toLowerCase() ?? "";
+  return message.includes("relationship") || message.includes("schema cache") || message.includes("foreign key");
 }

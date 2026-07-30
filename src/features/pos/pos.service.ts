@@ -25,11 +25,11 @@ export function calculateLine(item: Item, quantity: number, discounts: Discount[
   };
 }
 
-export function calculateTotals(lines: CartLine[], manualDiscount: number, taxRate = 0): OrderTotals {
+export function calculateTotals(lines: CartLine[], manualDiscount: number, taxRatePercent = 0): OrderTotals {
   const subtotal = lines.reduce((sum, line) => sum + line.item.sellingPrice * line.quantity, 0);
   const automaticDiscount = lines.reduce((sum, line) => sum + line.automaticDiscount, 0);
   const taxableAmount = Math.max(subtotal - automaticDiscount - manualDiscount, 0);
-  const tax = taxableAmount * taxRate;
+  const tax = taxableAmount * (Math.max(0, taxRatePercent) / 100);
 
   return {
     subtotal,
