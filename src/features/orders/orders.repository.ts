@@ -5,6 +5,7 @@ import type {
   OrderListResult,
   OrderPageOptions,
   OrderPayment,
+  PaymentMethod,
   OrderStatus,
   OrderSummary,
 } from "@/features/orders/types";
@@ -34,7 +35,7 @@ type OrderRow = {
   }> | null;
   payments: Array<{
     id: string;
-    method: "CASH" | "CARD";
+    method: PaymentMethod;
     amount: number | string;
     amount_tendered: number | string | null;
     balance_returned: number | string | null;

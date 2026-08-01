@@ -75,6 +75,8 @@ export function ReportsPage() {
           Total: summary.grandTotal,
           Cash: summary.cashTotal,
           Card: summary.cardTotal,
+          LankaQR: summary.lankaQrTotal,
+          "Bank Transfer": summary.bankTransferTotal,
         },
       ]);
     }
@@ -167,6 +169,8 @@ function SalesReport({ summary }: { summary: ReturnType<typeof summarizeOrders> 
     { label: "Discount", value: currency.format(summary.discountTotal) },
     { label: "Cash", value: currency.format(summary.cashTotal) },
     { label: "Card", value: currency.format(summary.cardTotal) },
+    { label: "LankaQR", value: currency.format(summary.lankaQrTotal) },
+    { label: "Bank Transfer", value: currency.format(summary.bankTransferTotal) },
     { label: "Tax", value: currency.format(summary.taxTotal) },
     { label: "Total", value: currency.format(summary.grandTotal) },
   ];

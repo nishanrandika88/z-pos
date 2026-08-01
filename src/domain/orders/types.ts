@@ -7,7 +7,7 @@ export interface CartLine {
   lineTotal: number;
 }
 
-export type PaymentMethod = "CASH" | "CARD";
+export type PaymentMethod = "CASH" | "CARD" | "LANKAQR" | "BANK_TRANSFER";
 
 export interface CashPayment {
   method: "CASH";
@@ -23,7 +23,15 @@ export interface CardPayment {
   maskedNumber: string;
 }
 
-export type PaymentDetails = CashPayment | CardPayment;
+export interface LankaQrPayment {
+  method: "LANKAQR";
+}
+
+export interface BankTransferPayment {
+  method: "BANK_TRANSFER";
+}
+
+export type PaymentDetails = CashPayment | CardPayment | LankaQrPayment | BankTransferPayment;
 
 export interface OrderTotals {
   subtotal: number;

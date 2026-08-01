@@ -107,6 +107,8 @@ export function DashboardPage() {
             <CardContent className="space-y-3">
               <PaymentRow label="Cash" value={summary.cashTotal} total={summary.grandTotal} />
               <PaymentRow label="Card" value={summary.cardTotal} total={summary.grandTotal} />
+              <PaymentRow label="LankaQR" value={summary.lankaQrTotal} total={summary.grandTotal} />
+              <PaymentRow label="Bank Transfer" value={summary.bankTransferTotal} total={summary.grandTotal} />
             </CardContent>
           </Card>
 

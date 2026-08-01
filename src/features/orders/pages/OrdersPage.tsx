@@ -1,6 +1,6 @@
 import { type MouseEvent, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CalendarDays, CreditCard, Printer, Search, Wallet, X } from "lucide-react";
+import { CalendarDays, CreditCard, Landmark, Printer, QrCode, Search, Wallet, X } from "lucide-react";
 import { can } from "@/features/auth/rbac";
 import { useAuthStore } from "@/features/auth/stores/auth.store";
 import { auditReceiptReprint, listOrders } from "@/features/orders/orders.repository";
@@ -331,12 +331,14 @@ function OrderDetails({ order, canReprint }: { order: OrderSummary; canReprint: 
 
 function PaymentBox({ payment }: { payment: OrderPayment }) {
   const isCash = payment.method === "CASH";
+  const PaymentIcon =
+    payment.method === "CASH" ? Wallet : payment.method === "LANKAQR" ? QrCode : payment.method === "BANK_TRANSFER" ? Landmark : CreditCard;
 
   return (
     <div className="rounded-xl border p-4 text-sm">
       <div className="mb-3 flex items-center gap-2 font-semibold">
-        {isCash ? <Wallet className="h-4 w-4" /> : <CreditCard className="h-4 w-4" />}
-        {payment.method}
+        <PaymentIcon className="h-4 w-4" />
+        {paymentMethodLabel(payment.method)}
       </div>
       <SummaryRow label="Paid" value={payment.amount} />
       {isCash ? (
@@ -344,14 +346,20 @@ function PaymentBox({ payment }: { payment: OrderPayment }) {
           <SummaryRow label="Tendered" value={payment.amountTendered ?? 0} />
           <SummaryRow label="Balance" value={payment.balanceReturned ?? 0} />
         </>
-      ) : (
+      ) : payment.method === "CARD" ? (
         <>
           <Info label="Card" value={payment.maskedCardNumber ?? "Masked card"} />
           <Info label="Bank" value={payment.bankName ?? "-"} />
         </>
-      )}
+      ) : null}
     </div>
   );
+}
+
+function paymentMethodLabel(method: OrderPayment["method"]) {
+  if (method === "LANKAQR") return "LankaQR";
+  if (method === "BANK_TRANSFER") return "Online Bank Transfer";
+  return method === "CARD" ? "Card" : "Cash";
 }
 
 function Info({ label, value }: { label: string; value: string }) {

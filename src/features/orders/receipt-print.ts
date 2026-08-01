@@ -1,6 +1,6 @@
 import { supabase } from "@/shared/lib/supabase";
 import type { OrderPayment, OrderSummary } from "@/features/orders/types";
-import { readCachedCompanySettings, writeCachedCompanySettings } from "@/features/settings/settings.repository";
+import { readCachedCompanySettings } from "@/features/settings/settings.repository";
 
 const amount = new Intl.NumberFormat("en-LK", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const dateOnly = new Intl.DateTimeFormat("en-LK", { day: "2-digit", month: "2-digit", year: "numeric" });
@@ -93,7 +93,6 @@ async function loadReceiptSettings(): Promise<ReceiptSettings> {
       thankYouMessage: data.thank_you_message ?? data.receipt_footer ?? fallback.thankYouMessage,
       taxRate: Number(data.tax_rate ?? 0),
     };
-    writeCachedCompanySettings(settings);
     return settings;
   } catch {
     return fallback;
@@ -336,6 +335,18 @@ function paymentBlock(payment: OrderPayment | undefined) {
         <span>${formatAmount(payment.amount)}</span>
       </div>
       ${payment.bankName ? `<div>Bank : ${escapeHtml(payment.bankName)}</div>` : ""}
+    `;
+  }
+
+  if (payment.method === "LANKAQR") {
+    return `
+      <div class="payment-note"><span>LankaQR</span><span>${formatAmount(payment.amount)}</span></div>
+    `;
+  }
+
+  if (payment.method === "BANK_TRANSFER") {
+    return `
+      <div class="payment-note"><span>Online Bank Transfer</span><span>${formatAmount(payment.amount)}</span></div>
     `;
   }
 

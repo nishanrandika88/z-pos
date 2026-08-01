@@ -3,8 +3,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDown,
   CreditCard,
+  Landmark,
   Minus,
   Plus,
+  QrCode,
   ReceiptText,
   RefreshCw,
   Search,
@@ -50,7 +52,19 @@ export function PosPage() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const profile = useAuthStore((state) => state.profile);
-  const { lines, addItem, removeItem, setQuantity, clearCart, setDiscounts, setManualDiscount, setPayment, payment } = usePosStore();
+  const {
+    lines,
+    addItem,
+    removeItem,
+    setQuantity,
+    clearCart,
+    setDiscounts,
+    manualDiscountMode,
+    manualDiscountValue,
+    setManualDiscount,
+    setPayment,
+    payment,
+  } = usePosStore();
   const { data: companySettings } = useQuery({
     queryKey: ["company-settings", profile?.branchId],
     queryFn: () => loadCompanySettings(profile?.branchId ?? ""),
@@ -65,6 +79,7 @@ export function PosPage() {
   });
   const taxRate = companySettings?.taxRate ?? 0;
   const totals = useOrderTotals(taxRate);
+  const maximumFixedDiscount = Math.max(0, totals.subtotal - totals.automaticDiscount);
   const cashTendered = payment?.method === "CASH" ? payment.amountTendered : totals.grandTotal;
   const cashBalance = Math.max(0, cashTendered - totals.grandTotal);
   const createOrderMutation = useMutation<OrderSummary, Error, CreateOrderVariables>({
@@ -123,6 +138,12 @@ export function PosPage() {
   });
 
   useEffect(() => setDiscounts(discounts), [discounts, setDiscounts]);
+
+  useEffect(() => {
+    if (manualDiscountMode === "FIXED" && manualDiscountValue > maximumFixedDiscount) {
+      setManualDiscount("FIXED", maximumFixedDiscount);
+    }
+  }, [manualDiscountMode, manualDiscountValue, maximumFixedDiscount, setManualDiscount]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => setDebouncedTerm(term.trim()), 180);
@@ -242,6 +263,29 @@ export function PosPage() {
     });
   }
 
+  function selectLankaQrPayment() {
+    setPayment({ method: "LANKAQR" });
+  }
+
+  function selectBankTransferPayment() {
+    setPayment({ method: "BANK_TRANSFER" });
+  }
+
+  function changeManualDiscountMode(mode: "PERCENTAGE" | "FIXED") {
+    if (mode === manualDiscountMode) return;
+    setManualDiscount(mode, 0);
+  }
+
+  function updateManualDiscount(value: string) {
+    const amount = Math.max(0, Number(value) || 0);
+    setManualDiscount(
+      manualDiscountMode,
+      manualDiscountMode === "PERCENTAGE"
+        ? Math.min(amount, 100)
+        : Math.min(amount, maximumFixedDiscount),
+    );
+  }
+
   function completeSale() {
     if (lines.length === 0 || createOrderMutation.isPending) return;
 
@@ -254,7 +298,6 @@ export function PosPage() {
       setNotice({ tone: "error", message: "Enter card type, bank name, and the last 4 card digits." });
       return;
     }
-
     const receiptWindow = openReceiptWindow();
 
     createOrderMutation.mutate({
@@ -453,15 +496,41 @@ export function PosPage() {
         </div>
 
         <div className="sticky bottom-0 shrink-0 border-t border-brand-forest/10 bg-white p-4 shadow-[0_-12px_30px_rgba(59,47,47,.08)]">
-          <div className="mb-3">
+          <div className="mb-3 grid grid-cols-[auto_minmax(0,1fr)] gap-2">
+            <div className="grid grid-cols-2 rounded-full border bg-brand-cream/60 p-1" aria-label="Bill discount type">
+              <button
+                className={[
+                  "rounded-full px-3 text-xs font-bold transition",
+                  manualDiscountMode === "PERCENTAGE" ? "bg-brand-forest text-white" : "text-brand-espresso/65",
+                ].join(" ")}
+                type="button"
+                aria-pressed={manualDiscountMode === "PERCENTAGE"}
+                onClick={() => changeManualDiscountMode("PERCENTAGE")}
+              >
+                %
+              </button>
+              <button
+                className={[
+                  "rounded-full px-3 text-xs font-bold transition",
+                  manualDiscountMode === "FIXED" ? "bg-brand-forest text-white" : "text-brand-espresso/65",
+                ].join(" ")}
+                type="button"
+                aria-pressed={manualDiscountMode === "FIXED"}
+                onClick={() => changeManualDiscountMode("FIXED")}
+              >
+                LKR
+              </button>
+            </div>
             <Input
               className="h-10 rounded-full text-sm"
               type="number"
               min={0}
-              max={100}
+              max={manualDiscountMode === "PERCENTAGE" ? 100 : maximumFixedDiscount}
               step="0.01"
-              placeholder="Bill discount (%)"
-              onChange={(event) => setManualDiscount("PERCENTAGE", Math.min(Number(event.target.value) || 0, 100))}
+              value={manualDiscountValue || ""}
+              placeholder={manualDiscountMode === "PERCENTAGE" ? "Discount percentage" : "Discount amount"}
+              aria-label={manualDiscountMode === "PERCENTAGE" ? "Bill discount percentage" : "Bill discount amount in LKR"}
+              onChange={(event) => updateManualDiscount(event.target.value)}
             />
           </div>
           <SummaryRow label="Subtotal" value={totals.subtotal} />
@@ -472,31 +541,65 @@ export function PosPage() {
             <span>Total</span>
             <span>{currency.format(totals.grandTotal)}</span>
           </div>
-          <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="mt-4 grid grid-cols-4 gap-1.5">
             <Button
               className={[
-                "h-11 font-bold",
+                "h-12 flex-col gap-0.5 px-1 text-[10px] font-bold sm:h-11 sm:flex-row sm:gap-1 sm:text-xs",
                 payment?.method === "CASH" || !payment
                   ? "bg-brand-orange text-white hover:bg-brand-orange/90"
                   : "border bg-white text-brand-espresso hover:bg-brand-cream",
               ].join(" ")}
               onClick={() => setPayment({ method: "CASH", amountTendered: totals.grandTotal, balanceReturned: 0 })}
+              aria-label="Cash"
+              title="Cash"
             >
               <Wallet className="h-4 w-4" />
               Cash
             </Button>
             <Button
               className={[
-                "h-11 font-bold",
+                "h-12 flex-col gap-0.5 px-1 text-[10px] font-bold sm:h-11 sm:flex-row sm:gap-1 sm:text-xs",
                 payment?.method === "CARD"
                   ? "bg-brand-orange text-white hover:bg-brand-orange/90"
                   : "border bg-white text-brand-espresso hover:bg-brand-cream",
               ].join(" ")}
               onClick={selectCardPayment}
               disabled={lines.length === 0}
+              aria-label="Card"
+              title="Card"
             >
               <CreditCard className="h-4 w-4" />
               Card
+            </Button>
+            <Button
+              className={[
+                "h-12 flex-col gap-0.5 px-1 text-[10px] font-bold sm:h-11 sm:flex-row sm:gap-1 sm:text-xs",
+                payment?.method === "LANKAQR"
+                  ? "bg-brand-orange text-white hover:bg-brand-orange/90"
+                  : "border bg-white text-brand-espresso hover:bg-brand-cream",
+              ].join(" ")}
+              onClick={selectLankaQrPayment}
+              disabled={lines.length === 0}
+              aria-label="LankaQR"
+              title="LankaQR"
+            >
+              <QrCode className="h-4 w-4" />
+              QR
+            </Button>
+            <Button
+              className={[
+                "h-12 flex-col gap-0.5 px-1 text-[10px] font-bold sm:h-11 sm:flex-row sm:gap-1 sm:text-xs",
+                payment?.method === "BANK_TRANSFER"
+                  ? "bg-brand-orange text-white hover:bg-brand-orange/90"
+                  : "border bg-white text-brand-espresso hover:bg-brand-cream",
+              ].join(" ")}
+              onClick={selectBankTransferPayment}
+              disabled={lines.length === 0}
+              aria-label="Online Bank Transfer"
+              title="Online Bank Transfer"
+            >
+              <Landmark className="h-4 w-4" />
+              Transfer
             </Button>
           </div>
           {lines.length > 0 && (payment?.method === "CASH" || !payment) ? (

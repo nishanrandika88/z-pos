@@ -1,5 +1,5 @@
 export type OrderStatus = "PENDING" | "COMPLETED" | "CANCELLED";
-export type PaymentMethod = "CASH" | "CARD";
+export type PaymentMethod = "CASH" | "CARD" | "LANKAQR" | "BANK_TRANSFER";
 
 export interface OrderItemLine {
   id: string;

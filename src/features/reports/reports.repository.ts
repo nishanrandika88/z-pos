@@ -1,7 +1,7 @@
 import type { Item } from "@/domain/catalog/types";
 import { listCategories, listItems } from "@/features/catalog/catalog.repository";
 import { listOrders } from "@/features/orders/orders.repository";
-import type { OrderFilters, OrderSummary } from "@/features/orders/types";
+import type { OrderFilters, OrderSummary, PaymentMethod } from "@/features/orders/types";
 
 const pageSize = 500;
 
@@ -14,6 +14,8 @@ export interface SalesSummary {
   grandTotal: number;
   cashTotal: number;
   cardTotal: number;
+  lankaQrTotal: number;
+  bankTransferTotal: number;
 }
 
 export interface ItemSalesRow {
@@ -57,10 +59,23 @@ export function summarizeOrders(orders: OrderSummary[]): SalesSummary {
       order.payments.forEach((payment) => {
         if (payment.method === "CASH") summary.cashTotal += payment.amount;
         if (payment.method === "CARD") summary.cardTotal += payment.amount;
+        if (payment.method === "LANKAQR") summary.lankaQrTotal += payment.amount;
+        if (payment.method === "BANK_TRANSFER") summary.bankTransferTotal += payment.amount;
       });
       return summary;
     },
-    { orderCount: 0, itemCount: 0, subtotal: 0, discountTotal: 0, taxTotal: 0, grandTotal: 0, cashTotal: 0, cardTotal: 0 },
+    {
+      orderCount: 0,
+      itemCount: 0,
+      subtotal: 0,
+      discountTotal: 0,
+      taxTotal: 0,
+      grandTotal: 0,
+      cashTotal: 0,
+      cardTotal: 0,
+      lankaQrTotal: 0,
+      bankTransferTotal: 0,
+    },
   );
 }
 
@@ -112,8 +127,14 @@ export function orderRows(orders: OrderSummary[]) {
     Discount: order.automaticDiscountTotal + order.manualDiscountTotal,
     Tax: order.taxTotal,
     Total: order.grandTotal,
-    Payment: order.payments.map((payment) => payment.method).join(" + "),
+    Payment: order.payments.map((payment) => paymentMethodLabel(payment.method)).join(" + "),
   }));
+}
+
+function paymentMethodLabel(method: PaymentMethod) {
+  if (method === "LANKAQR") return "LankaQR";
+  if (method === "BANK_TRANSFER") return "Online Bank Transfer";
+  return method === "CARD" ? "Card" : "Cash";
 }
 
 export function itemSalesRows(rows: ItemSalesRow[]) {
