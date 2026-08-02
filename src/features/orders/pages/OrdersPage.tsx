@@ -20,7 +20,7 @@ const emptyOrderResult = { orders: emptyOrders, hasMore: false };
 
 export function OrdersPage() {
   const profile = useAuthStore((state) => state.profile);
-  const canReprint = can(profile?.role, "orders:reprint");
+  const canReprint = can(profile?.role, "orders:reprint", profile?.permissions);
   const [filters, setFilters] = useState<OrderFilters>({});
   const [draftFilters, setDraftFilters] = useState<OrderFilters>({});
   const [page, setPage] = useState(1);

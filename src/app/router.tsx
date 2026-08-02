@@ -15,6 +15,10 @@ const ReportsPage = lazyRoute(() => import("@/features/reports/pages/ReportsPage
 const UsersPage = lazyRoute(() => import("@/features/users/pages/UsersPage"), "UsersPage");
 const SettingsPage = lazyRoute(() => import("@/features/settings/pages/SettingsPage"), "SettingsPage");
 const AuditLogsPage = lazyRoute(() => import("@/features/audit/pages/AuditLogsPage"), "AuditLogsPage");
+const ExpensesPage = lazyRoute(() => import("@/features/expenses/pages/ExpensesPage"), "ExpensesPage");
+const ExpenseFormPage = lazyRoute(() => import("@/features/expenses/pages/ExpenseFormPage"), "ExpenseFormPage");
+const ExpenseDetailPage = lazyRoute(() => import("@/features/expenses/pages/ExpenseDetailPage"), "ExpenseDetailPage");
+const ReceiptReviewPage = lazyRoute(() => import("@/features/expenses/pages/ReceiptReviewPage"), "ReceiptReviewPage");
 
 function lazyRoute<T extends Record<string, ComponentType>>(
   loader: () => Promise<T>,
@@ -50,6 +54,11 @@ export const router = createBrowserRouter([
       { path: "catalog", element: page(<ProtectedRoute permission="catalog:manage"><CatalogPage /></ProtectedRoute>) },
       { path: "discounts", element: page(<ProtectedRoute permission="discounts:manage"><DiscountsPage /></ProtectedRoute>) },
       { path: "orders", element: page(<ProtectedRoute permission="orders:read"><OrdersPage /></ProtectedRoute>) },
+      { path: "expenses", element: page(<ProtectedRoute permission="expenses:read"><ExpensesPage /></ProtectedRoute>) },
+      { path: "expenses/new", element: page(<ProtectedRoute permission="expenses:create"><ExpenseFormPage /></ProtectedRoute>) },
+      { path: "expenses/:expenseId/edit", element: page(<ProtectedRoute permission="expenses:update"><ExpenseFormPage /></ProtectedRoute>) },
+      { path: "expenses/receipts/:receiptId/review", element: page(<ProtectedRoute permission="expenses:receipts"><ReceiptReviewPage /></ProtectedRoute>) },
+      { path: "expenses/:expenseId", element: page(<ProtectedRoute permission="expenses:read"><ExpenseDetailPage /></ProtectedRoute>) },
       { path: "reports", element: page(<ProtectedRoute permission="reports:read"><ReportsPage /></ProtectedRoute>) },
       { path: "users", element: page(<ProtectedRoute permission="users:manage"><UsersPage /></ProtectedRoute>) },
       { path: "settings", element: page(<ProtectedRoute permission="settings:manage"><SettingsPage /></ProtectedRoute>) },

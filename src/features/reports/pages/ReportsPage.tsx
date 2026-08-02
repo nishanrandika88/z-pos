@@ -5,26 +5,32 @@ import {
   buildItemSales,
   catalogRows,
   fetchCatalogExportData,
+  fetchExpensesForRange,
   fetchOrdersForRange,
   itemSalesRows,
+  expenseRows,
   orderRows,
   summarizeOrders,
+  summarizeExpenses,
 } from "@/features/reports/reports.repository";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { downloadCsv } from "@/shared/lib/csv";
 
-type ReportType = "sales" | "orders" | "items" | "catalog";
+type ReportType = "sales" | "orders" | "items" | "catalog" | "expenses" | "profit";
 
 const currency = new Intl.NumberFormat("en-LK", { style: "currency", currency: "LKR" });
 const emptyOrders: Awaited<ReturnType<typeof fetchOrdersForRange>> = [];
 const emptyCatalogItems: Awaited<ReturnType<typeof fetchCatalogExportData>>["items"] = [];
+const emptyExpenses: Awaited<ReturnType<typeof fetchExpensesForRange>> = [];
 const reportTypes: Array<{ id: ReportType; label: string }> = [
   { id: "sales", label: "Sales" },
   { id: "orders", label: "Orders" },
   { id: "items", label: "Item Sales" },
   { id: "catalog", label: "Catalog" },
+  { id: "expenses", label: "Expenses" },
+  { id: "profit", label: "Profit / Loss" },
 ];
 
 export function ReportsPage() {
@@ -32,10 +38,12 @@ export function ReportsPage() {
   const [dateFrom, setDateFrom] = useState(localDate());
   const [dateTo, setDateTo] = useState(localDate());
   const isCatalogReport = reportType === "catalog";
+  const needsOrders = !isCatalogReport && reportType !== "expenses";
+  const needsExpenses = reportType === "expenses" || reportType === "profit";
   const ordersQuery = useQuery({
     queryKey: ["reports", "orders", dateFrom, dateTo],
     queryFn: () => fetchOrdersForRange({ dateFrom, dateTo }),
-    enabled: !isCatalogReport,
+    enabled: needsOrders,
     refetchOnWindowFocus: false,
   });
   const catalogQuery = useQuery({
@@ -44,16 +52,26 @@ export function ReportsPage() {
     enabled: isCatalogReport,
     refetchOnWindowFocus: false,
   });
+  const expensesQuery = useQuery({
+    queryKey: ["reports", "expenses", dateFrom, dateTo],
+    queryFn: () => fetchExpensesForRange(dateFrom, dateTo),
+    enabled: needsExpenses,
+    refetchOnWindowFocus: false,
+  });
 
   const orders = ordersQuery.data ?? emptyOrders;
   const itemSales = useMemo(() => buildItemSales(orders), [orders]);
   const summary = useMemo(() => summarizeOrders(orders), [orders]);
+  const expenses = expensesQuery.data ?? emptyExpenses;
+  const expenseSummary = useMemo(() => summarizeExpenses(expenses), [expenses]);
   const catalogItems = catalogQuery.data?.items ?? emptyCatalogItems;
-  const isFetching = isCatalogReport ? catalogQuery.isFetching : ordersQuery.isFetching;
-  const error = isCatalogReport ? catalogQuery.error : ordersQuery.error;
+  const isFetching = (needsOrders && ordersQuery.isFetching) || (needsExpenses && expensesQuery.isFetching) || (isCatalogReport && catalogQuery.isFetching);
+  const error = (needsOrders ? ordersQuery.error : null) || (needsExpenses ? expensesQuery.error : null) || (isCatalogReport ? catalogQuery.error : null);
 
   function refresh() {
-    void (isCatalogReport ? catalogQuery.refetch() : ordersQuery.refetch());
+    if (isCatalogReport) void catalogQuery.refetch();
+    if (needsOrders) void ordersQuery.refetch();
+    if (needsExpenses) void expensesQuery.refetch();
   }
 
   function clearFilters() {
@@ -83,6 +101,12 @@ export function ReportsPage() {
     if (reportType === "orders") downloadCsv(`orders-${suffix}.csv`, orderRows(orders));
     if (reportType === "items") downloadCsv(`item-sales-${suffix}.csv`, itemSalesRows(itemSales));
     if (reportType === "catalog") downloadCsv("catalog-export.csv", catalogRows(catalogItems));
+    if (reportType === "expenses") downloadCsv(`expenses-${suffix}.csv`, expenseRows(expenses));
+    if (reportType === "profit") downloadCsv(`profit-loss-${suffix}.csv`, [{
+      Sales: summary.grandTotal,
+      Expenses: expenseSummary.total,
+      "Profit / Loss": summary.grandTotal - expenseSummary.total,
+    }]);
   }
 
   return (
@@ -90,7 +114,7 @@ export function ReportsPage() {
       <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Reports</h1>
-          <p className="text-muted-foreground">Sales, order, item sales, and catalog exports for Excel.</p>
+          <p className="text-muted-foreground">Sales, expenses, profit or loss, item performance, and CSV exports for Excel.</p>
         </div>
         <div className="grid gap-2 sm:grid-cols-[160px_160px_auto_auto_auto]">
           <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} disabled={isCatalogReport} />
@@ -103,7 +127,7 @@ export function ReportsPage() {
             <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
             Refresh
           </Button>
-          <Button onClick={exportReport} disabled={isFetching || (isCatalogReport ? catalogItems.length === 0 : orders.length === 0)}>
+          <Button onClick={exportReport} disabled={isFetching || (isCatalogReport ? catalogItems.length === 0 : reportType === "expenses" ? expenses.length === 0 : reportType === "profit" ? orders.length === 0 && expenses.length === 0 : orders.length === 0)}>
             <Download className="h-4 w-4" />
             Export
           </Button>
@@ -126,7 +150,7 @@ export function ReportsPage() {
         ))}
       </div>
 
-      {!isCatalogReport ? <TotalSalesStrip summary={summary} dateFrom={dateFrom} dateTo={dateTo} /> : null}
+      {needsOrders ? <TotalSalesStrip summary={summary} dateFrom={dateFrom} dateTo={dateTo} /> : null}
 
       {error ? <div className="rounded-md border border-destructive/30 bg-white p-3 text-sm text-destructive">{error.message}</div> : null}
 
@@ -134,8 +158,28 @@ export function ReportsPage() {
       {reportType === "orders" ? <OrdersReport orders={orders} /> : null}
       {reportType === "items" ? <ItemSalesReport rows={itemSales} /> : null}
       {reportType === "catalog" ? <CatalogReport items={catalogItems} /> : null}
+      {reportType === "expenses" ? <ExpenseReport summary={expenseSummary} /> : null}
+      {reportType === "profit" ? <ProfitLossReport sales={summary.grandTotal} expenses={expenseSummary.total} /> : null}
     </div>
   );
+}
+
+function ExpenseReport({ summary }: { summary: ReturnType<typeof summarizeExpenses> }) {
+  const cards = [
+    { label: "Expenses", value: summary.expenseCount },
+    { label: "Total expenses", value: currency.format(summary.total) },
+    { label: "Shop funded", value: currency.format(summary.shopFunded) },
+    { label: "Personally funded", value: currency.format(summary.personallyFunded) },
+    { label: "Pending reimbursement", value: currency.format(summary.pendingReimbursement) },
+    { label: "Salary expenses", value: currency.format(summary.salaryTotal) },
+    { label: "Inventory purchases", value: currency.format(summary.inventoryPurchaseTotal) },
+  ];
+  return <div className="space-y-4"><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{cards.map((card) => <Card key={card.label}><CardContent><p className="text-sm text-muted-foreground">{card.label}</p><p className="mt-1 text-2xl font-semibold">{card.value}</p></CardContent></Card>)}</div><div className="grid gap-4 lg:grid-cols-2"><ReportTable title="Expenses by category" emptyText="No category expenses." headers={["Category", "Total"]} rows={summary.byCategory.map((row) => [row.name, currency.format(row.total)])} /><ReportTable title="Expenses by supplier" emptyText="No supplier expenses." headers={["Supplier", "Total"]} rows={summary.bySupplier.map((row) => [row.name, currency.format(row.total)])} /></div><ReportTable title="Expenses entered by user" emptyText="No user expenses." headers={["User", "Total"]} rows={summary.byUser.map((row) => [row.name, currency.format(row.total)])} /></div>;
+}
+
+function ProfitLossReport({ sales, expenses }: { sales: number; expenses: number }) {
+  const profit = sales - expenses;
+  return <div className="grid gap-3 sm:grid-cols-3"><Card><CardContent><p className="text-sm text-muted-foreground">Completed sales</p><p className="mt-1 text-2xl font-semibold">{currency.format(sales)}</p></CardContent></Card><Card><CardContent><p className="text-sm text-muted-foreground">Approved / paid expenses</p><p className="mt-1 text-2xl font-semibold">{currency.format(expenses)}</p></CardContent></Card><Card><CardContent><p className="text-sm text-muted-foreground">Profit / loss</p><p className={`mt-1 text-2xl font-semibold ${profit < 0 ? "text-destructive" : "text-brand-forest"}`}>{currency.format(profit)}</p></CardContent></Card></div>;
 }
 
 function TotalSalesStrip({ summary, dateFrom, dateTo }: { summary: ReturnType<typeof summarizeOrders>; dateFrom: string; dateTo: string }) {

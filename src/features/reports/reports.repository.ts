@@ -2,6 +2,9 @@ import type { Item } from "@/domain/catalog/types";
 import { listCategories, listItems } from "@/features/catalog/catalog.repository";
 import { listOrders } from "@/features/orders/orders.repository";
 import type { OrderFilters, OrderSummary, PaymentMethod } from "@/features/orders/types";
+import type { ExpenseSummary } from "@/domain/expenses/types";
+import { listExpenses } from "@/features/expenses/expenses.repository";
+import { parseDecimal } from "@/features/expenses/expense.service";
 
 const pageSize = 500;
 
@@ -27,6 +30,20 @@ export interface ItemSalesRow {
   netTotal: number;
 }
 
+export interface ExpenseReportSummary {
+  expenseCount: number;
+  total: number;
+  shopFunded: number;
+  personallyFunded: number;
+  reimbursed: number;
+  pendingReimbursement: number;
+  salaryTotal: number;
+  inventoryPurchaseTotal: number;
+  byCategory: Array<{ name: string; total: number }>;
+  bySupplier: Array<{ name: string; total: number }>;
+  byUser: Array<{ name: string; total: number }>;
+}
+
 export async function fetchOrdersForRange(filters: OrderFilters) {
   const orders: OrderSummary[] = [];
   let page = 1;
@@ -45,6 +62,70 @@ export async function fetchOrdersForRange(filters: OrderFilters) {
 export async function fetchCatalogExportData() {
   const [categories, items] = await Promise.all([listCategories(), listItems()]);
   return { categories, items };
+}
+
+export async function fetchExpensesForRange(dateFrom?: string, dateTo?: string) {
+  const expenses: ExpenseSummary[] = [];
+  let page = 1;
+  let hasMore = true;
+  while (hasMore && page <= 20) {
+    const result = await listExpenses({ dateFrom, dateTo }, { page, pageSize });
+    expenses.push(...result.expenses);
+    hasMore = result.hasMore;
+    page += 1;
+  }
+  return expenses.filter((expense) => !["DRAFT", "VOID"].includes(expense.status));
+}
+
+export function summarizeExpenses(expenses: ExpenseSummary[]): ExpenseReportSummary {
+  const category = new Map<string, number>();
+  const supplier = new Map<string, number>();
+  const user = new Map<string, number>();
+  const summary = expenses.reduce<Omit<ExpenseReportSummary, "byCategory" | "bySupplier" | "byUser">>((result, expense) => {
+    const total = moneyNumber(expense.grandTotal);
+    const personal = moneyNumber(expense.personalAmount);
+    const reimbursed = moneyNumber(expense.reimbursedAmount);
+    result.expenseCount += 1;
+    result.total += total;
+    result.personallyFunded += personal;
+    result.shopFunded += Math.max(0, total - personal);
+    result.reimbursed += reimbursed;
+    result.pendingReimbursement += Math.max(0, moneyNumber(expense.reimbursableAmount) - reimbursed);
+    if (expense.categoryKind === "SALARY") result.salaryTotal += total;
+    if (expense.categoryKind === "INVENTORY") result.inventoryPurchaseTotal += total;
+    category.set(expense.categoryName, (category.get(expense.categoryName) ?? 0) + total);
+    supplier.set(expense.payee || "No supplier", (supplier.get(expense.payee || "No supplier") ?? 0) + total);
+    user.set(expense.createdByName, (user.get(expense.createdByName) ?? 0) + total);
+    return result;
+  }, { expenseCount: 0, total: 0, shopFunded: 0, personallyFunded: 0, reimbursed: 0, pendingReimbursement: 0, salaryTotal: 0, inventoryPurchaseTotal: 0 });
+  return {
+    ...summary,
+    byCategory: sortedTotals(category),
+    bySupplier: sortedTotals(supplier),
+    byUser: sortedTotals(user),
+  };
+}
+
+export function expenseRows(expenses: ExpenseSummary[]) {
+  return expenses.map((expense) => ({
+    Reference: expense.expenseNumber,
+    Date: new Date(expense.expenseDate).toLocaleString(),
+    Category: expense.categoryName,
+    Supplier: expense.payee ?? "",
+    Invoice: expense.invoiceNumber ?? "",
+    "Entered By": expense.createdByName,
+    Status: expense.status,
+    "Funding Sources": expense.fundingSources.join(" + "),
+    "Personal Amount": expense.personalAmount,
+    "Reimbursable Amount": expense.reimbursableAmount,
+    Reimbursed: expense.reimbursedAmount,
+    "Reimbursement Status": expense.reimbursementStatus,
+    Subtotal: expense.subtotal,
+    Tax: expense.taxTotal,
+    Charges: expense.additionalChargesTotal,
+    Discount: expense.discountTotal,
+    Total: expense.grandTotal,
+  }));
 }
 
 export function summarizeOrders(orders: OrderSummary[]): SalesSummary {
@@ -146,4 +227,12 @@ export function itemSalesRows(rows: ItemSalesRow[]) {
     Discount: row.discountTotal,
     Net: row.netTotal,
   }));
+}
+
+function sortedTotals(values: Map<string, number>) {
+  return Array.from(values, ([name, total]) => ({ name, total })).sort((left, right) => right.total - left.total);
+}
+
+function moneyNumber(value: string) {
+  return Number(parseDecimal(value, 2)) / 100;
 }

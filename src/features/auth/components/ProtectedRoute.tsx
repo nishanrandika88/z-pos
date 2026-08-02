@@ -18,7 +18,7 @@ export function ProtectedRoute({ children, permission }: ProtectedRouteProps) {
     return <Navigate to="/login" replace />;
   }
 
-  if (permission && !can(profile.role, permission)) {
+  if (permission && !can(profile.role, permission, profile.permissions)) {
     return <Navigate to="/pos" replace />;
   }
 

@@ -4,6 +4,7 @@ import {
   BarChart3,
   Boxes,
   ClipboardList,
+  CircleDollarSign,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -32,6 +33,7 @@ const navItems = [
   { href: "/catalog", label: "Catalog", icon: Boxes, permission: "catalog:manage" },
   { href: "/discounts", label: "Discounts", icon: Percent, permission: "discounts:manage" },
   { href: "/orders", label: "Orders", icon: ClipboardList, permission: "orders:read" },
+  { href: "/expenses", label: "Expenses", icon: CircleDollarSign, permission: "expenses:read" },
   { href: "/reports", label: "Reports", icon: BarChart3, permission: "reports:read" },
   { href: "/users", label: "Users", icon: Users, permission: "users:manage" },
   { href: "/settings", label: "Settings", icon: Settings, permission: "settings:manage" },
@@ -45,7 +47,7 @@ export function AppShell() {
   const [isNavCollapsed, setIsNavCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const syncedProfileRef = useRef<string | null>(null);
-  const visibleItems = navItems.filter((item) => can(profile?.role, item.permission));
+  const visibleItems = navItems.filter((item) => can(profile?.role, item.permission, profile?.permissions));
   const isPos = location.pathname === "/pos";
   const userDisplayName = profile?.displayName || profile?.fullName || "Admin";
 
