@@ -75,6 +75,16 @@ add column employee_id uuid references employees(id);
 
 create index salary_expense_employee_record_idx on salary_expense_details(employee_id) where employee_id is not null;
 
+alter table expense_fundings
+add column person_employee_id uuid references employees(id),
+add column person_profile_id uuid references profiles(id),
+add constraint expense_fundings_person_identity_check check (
+  source = 'PERSONAL' or (person_employee_id is null and person_profile_id is null)
+);
+
+create index expense_fundings_person_employee_idx on expense_fundings(person_employee_id) where person_employee_id is not null;
+create index expense_fundings_person_profile_idx on expense_fundings(person_profile_id) where person_profile_id is not null;
+
 create table expense_category_details (
   expense_id uuid primary key references expenses(id) on delete cascade,
   form_type expense_form_type not null,
@@ -100,7 +110,14 @@ alter table employees enable row level security;
 alter table expense_category_details enable row level security;
 
 create policy "employee readers" on employees for select
-using (same_branch(branch_id) and has_expense_permission('expenses:salaries'));
+using (
+  same_branch(branch_id)
+  and (
+    has_expense_permission('expenses:read')
+    or has_expense_permission('expenses:create')
+    or has_expense_permission('expenses:salaries')
+  )
+);
 create policy "employee managers" on employees for all
 using (same_branch(branch_id) and has_expense_permission('expenses:salaries'))
 with check (same_branch(branch_id) and has_expense_permission('expenses:salaries'));
@@ -124,6 +141,7 @@ declare
   target_category expense_categories;
   target_supplier suppliers;
   target_employee employees;
+  target_payer_employee employees;
   line jsonb;
   funding jsonb;
   salary jsonb;
@@ -147,6 +165,9 @@ declare
   employee_id_value uuid;
   employee_profile_id_value uuid;
   employee_name_value text;
+  person_employee_id_value uuid;
+  person_profile_id_value uuid;
+  person_paid_value text;
   effective_payee text;
   salary_net numeric(14,2);
 begin
@@ -227,13 +248,35 @@ begin
 
   for funding in select value from jsonb_array_elements(expense_payload -> 'fundings') loop
     if (funding ->> 'amount')::numeric <= 0 then raise exception 'Funding amount must be greater than zero'; end if;
-    if (funding ->> 'source') = 'PERSONAL' and char_length(trim(coalesce(funding ->> 'personPaid', ''))) < 2 then
-      raise exception 'Enter the person who used personal money';
+    person_employee_id_value := null;
+    person_profile_id_value := null;
+    person_paid_value := null;
+    if (funding ->> 'source') = 'PERSONAL' then
+      person_employee_id_value := nullif(funding ->> 'personEmployeeId', '')::uuid;
+      person_profile_id_value := nullif(funding ->> 'personProfileId', '')::uuid;
+      person_paid_value := nullif(trim(funding ->> 'personPaid'), '');
+      if person_employee_id_value is not null then
+        select * into target_payer_employee from employees
+        where id = person_employee_id_value and branch_id = target_expense.branch_id and active = true;
+        if target_payer_employee.id is null then raise exception 'The selected payer employee is not available in this branch'; end if;
+        person_profile_id_value := target_payer_employee.profile_id;
+        person_paid_value := target_payer_employee.full_name;
+      elsif person_profile_id_value is not null then
+        select full_name into person_paid_value from profiles
+        where id = person_profile_id_value and branch_id = target_expense.branch_id and active = true;
+        if person_paid_value is null then raise exception 'The selected payer profile is not available in this branch'; end if;
+      end if;
+      if char_length(trim(coalesce(person_paid_value, ''))) < 2 then
+        raise exception 'Enter the person who used personal money';
+      end if;
     end if;
-    insert into expense_fundings(expense_id, source, amount, person_paid, reimbursement_required, notes)
+    insert into expense_fundings(
+      expense_id, source, amount, person_employee_id, person_profile_id,
+      person_paid, reimbursement_required, notes
+    )
     values (
       target_expense_id, (funding ->> 'source')::expense_fund_source, (funding ->> 'amount')::numeric,
-      nullif(trim(funding ->> 'personPaid'), ''),
+      person_employee_id_value, person_profile_id_value, person_paid_value,
       case when (funding ->> 'source') = 'PERSONAL' then coalesce((funding ->> 'reimbursementRequired')::boolean, true) else false end,
       nullif(trim(funding ->> 'notes'), '')
     );

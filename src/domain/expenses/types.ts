@@ -30,6 +30,8 @@ export interface ExpenseLineDraft {
 export interface ExpenseFundingDraft {
   source: FundSource;
   amount: string;
+  personEmployeeId?: string;
+  personProfileId?: string;
   personPaid?: string;
   reimbursementRequired?: boolean;
   notes?: string;
@@ -198,4 +200,14 @@ export interface EmployeeOption {
   fullName: string;
   detail?: string;
   source: "EMPLOYEE" | "USER";
+}
+
+export interface RecentExpenseDefaults {
+  expenseNumber: string;
+  supplierId?: string;
+  payee?: string;
+  paymentMethod: ExpensePaymentMethod;
+  fundingSource?: Exclude<FundSource, "PERSONAL">;
+  utilityType?: string;
+  accountNumber?: string;
 }

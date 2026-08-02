@@ -76,4 +76,15 @@ describe("category-specific expense validation", () => {
     );
     expect(validateExpenseDraft(draft({ updateInventory: false }), "INVENTORY_PURCHASE").success).toBe(true);
   });
+
+  it("keeps employee or user identities scoped to personal funding", () => {
+    const employeeId = "33333333-3333-4333-8333-333333333333";
+    expect(validateExpenseDraft(draft({ fundings: [{
+      source: "PERSONAL", amount: "100.00", personEmployeeId: employeeId,
+      personPaid: "Test Employee", reimbursementRequired: true,
+    }] }), "GENERAL").success).toBe(true);
+    expect(messages(draft({ fundings: [{
+      source: "SHOP_CASH", amount: "100.00", personEmployeeId: employeeId,
+    }] }), "GENERAL")).toContain("A payer identity is only valid for personal funding.");
+  });
 });

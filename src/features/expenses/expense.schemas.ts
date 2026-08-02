@@ -21,12 +21,17 @@ export const expenseLineSchema = z.object({
 export const expenseFundingSchema = z.object({
   source: z.enum(["SHOP_CASH", "SHOP_BANK", "SHOP_CARD", "PERSONAL", "OTHER"]),
   amount: money.refine((value) => Number(value) > 0, "Funding amount must be greater than zero."),
+  personEmployeeId: z.string().uuid().optional().or(z.literal("")),
+  personProfileId: z.string().uuid().optional().or(z.literal("")),
   personPaid: z.string().trim().max(120).optional(),
   reimbursementRequired: z.boolean().optional(),
   notes: z.string().trim().max(500).optional(),
 }).superRefine((funding, context) => {
   if (funding.source === "PERSONAL" && !funding.personPaid) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["personPaid"], message: "Enter the person who paid." });
+  }
+  if (funding.source !== "PERSONAL" && (funding.personEmployeeId || funding.personProfileId)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["source"], message: "A payer identity is only valid for personal funding." });
   }
 });
 

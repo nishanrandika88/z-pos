@@ -10,6 +10,7 @@ import type {
   ExpenseFunding,
   ExpenseLine,
   ExpenseReceipt,
+  RecentExpenseDefaults,
   ExpenseSummary,
   InventoryItem,
 } from "@/domain/expenses/types";
@@ -25,7 +26,7 @@ const expenseSelect = `
   category:expense_categories!expenses_category_id_fkey(name, kind, form_type),
   created_profile:profiles!expenses_created_by_fkey(full_name, display_name),
   updated_profile:profiles!expenses_updated_by_fkey(full_name, display_name),
-  fundings:expense_fundings!inner(id, source, amount, person_paid, reimbursement_required, notes, reimbursements:expense_reimbursements(id, amount, reimbursement_date, notes))
+  fundings:expense_fundings!inner(id, source, amount, person_employee_id, person_profile_id, person_paid, reimbursement_required, notes, reimbursements:expense_reimbursements(id, amount, reimbursement_date, notes))
 `;
 
 type PageOptions = { page: number; pageSize: number };
@@ -165,6 +166,36 @@ export async function listSuppliers(): Promise<SupplierOption[]> {
   const { data, error } = await supabase.from("suppliers").select("id, name, active").eq("active", true).order("name");
   if (error) throw error;
   return data ?? [];
+}
+
+export async function getRecentExpenseDefaults(categoryId: string): Promise<RecentExpenseDefaults | undefined> {
+  const { data, error } = await supabase
+    .from("expenses")
+    .select("expense_number, payee_snapshot, payment_method, supplier:suppliers!expenses_supplier_id_fkey(id, active), category_details:expense_category_details(utility_type, account_number), fundings:expense_fundings(source)")
+    .eq("category_id", categoryId)
+    .in("status", ["APPROVED", "PAID"])
+    .order("expense_date", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return undefined;
+
+  const supplier = first(data.supplier);
+  const categoryDetails = first(data.category_details);
+  const fundingSources = (data.fundings ?? []).map((funding: any) => funding.source);
+  const reusableFundingSource = fundingSources.length === 1 && fundingSources[0] !== "PERSONAL"
+    ? fundingSources[0]
+    : undefined;
+  return {
+    expenseNumber: data.expense_number,
+    supplierId: supplier?.active ? supplier.id : undefined,
+    payee: data.payee_snapshot ?? undefined,
+    paymentMethod: data.payment_method,
+    fundingSource: reusableFundingSource,
+    utilityType: categoryDetails?.utility_type ?? undefined,
+    accountNumber: categoryDetails?.account_number ?? undefined,
+  };
 }
 
 export async function createSupplier(input: { branchId: string; name: string; userId: string }) {
@@ -511,6 +542,8 @@ function mapExpenseFunding(row: any): ExpenseFunding {
     id: row.id,
     source: row.source,
     amount: String(row.amount),
+    personEmployeeId: row.person_employee_id ?? undefined,
+    personProfileId: row.person_profile_id ?? undefined,
     personPaid: row.person_paid ?? undefined,
     reimbursementRequired: row.reimbursement_required,
     notes: row.notes ?? undefined,

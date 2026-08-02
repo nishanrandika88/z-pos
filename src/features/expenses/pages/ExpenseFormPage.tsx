@@ -21,6 +21,7 @@ import {
   findPotentialDuplicateExpense,
   getExpense,
   getExpenseReceipt,
+  getRecentExpenseDefaults,
   listEmployeeOptions,
   listExpenseCategories,
   listInventoryItems,
@@ -55,6 +56,12 @@ export function ExpenseFormPage() {
   const employeeOptionsQuery = useQuery({ queryKey: ["expense-employee-options"], queryFn: listEmployeeOptions });
   const expenseQuery = useQuery({ queryKey: ["expense", expenseId], queryFn: () => getExpense(expenseId!), enabled: Boolean(expenseId) });
   const receiptQuery = useQuery({ queryKey: ["expense-receipt", receiptId], queryFn: () => getExpenseReceipt(receiptId!), enabled: Boolean(receiptId && !expenseId) });
+  const defaultsQuery = useQuery({
+    queryKey: ["expense-recent-defaults", draft.categoryId],
+    queryFn: () => getRecentExpenseDefaults(draft.categoryId),
+    enabled: Boolean(draft.categoryId && !expenseId),
+    staleTime: 60_000,
+  });
   const selectedCategory = categoriesQuery.data?.find((category) => category.id === draft.categoryId);
   const formType = selectedCategory?.formType ?? "GENERAL";
   const totalsResult = useMemo(() => {
@@ -192,6 +199,30 @@ export function ExpenseFormPage() {
     setDraft((current) => ({ ...current, fundings: current.fundings.length === 1 ? [{ ...current.fundings[0], amount: totalsResult.totals!.grandTotal }] : current.fundings }));
   }
 
+  function applyPreviousDefaults() {
+    const previous = defaultsQuery.data;
+    if (!previous) return;
+    setDraft((current) => ({
+      ...current,
+      supplierId: previous.supplierId,
+      payee: previous.payee,
+      paymentMethod: previous.paymentMethod,
+      categoryDetails: current.categoryDetails ? {
+        ...current.categoryDetails,
+        utilityType: previous.utilityType ?? current.categoryDetails.utilityType,
+        accountNumber: previous.accountNumber ?? current.categoryDetails.accountNumber,
+      } : current.categoryDetails,
+      fundings: current.fundings.length === 1 && previous.fundingSource ? [{
+        ...current.fundings[0],
+        source: previous.fundingSource,
+        personEmployeeId: undefined,
+        personProfileId: undefined,
+        personPaid: undefined,
+        reimbursementRequired: undefined,
+      }] : current.fundings,
+    }));
+  }
+
   if (expenseId && expenseQuery.isLoading) return <p className="p-6 text-sm text-muted-foreground">Loading expense…</p>;
   if (expenseQuery.error) return <p className="p-6 text-sm text-destructive">{expenseQuery.error.message}</p>;
 
@@ -206,6 +237,7 @@ export function ExpenseFormPage() {
     </CardContent></Card>
 
     {selectedCategory ? <>
+      {defaultsQuery.data ? <PreviousDefaultsCard defaults={defaultsQuery.data} onApply={applyPreviousDefaults} /> : null}
       <CategoryFields formType={formType} draft={draft} setDraft={setDraft} suppliers={suppliersQuery.data ?? []} employeeOptions={employeeOptionsQuery.data ?? []} fieldErrors={fieldErrors} />
       {formType === "INVENTORY_PURCHASE" ? <InventoryLines draft={draft} setDraft={setDraft} updateLine={updateLine} inventory={inventoryQuery.data ?? []} fieldErrors={fieldErrors} /> : null}
       {!["SALARY", "INVENTORY_PURCHASE"].includes(formType) ? <Card><CardHeader><h2 className="font-semibold">Amount</h2><p className="text-sm text-muted-foreground">A standard accounting line is created automatically.</p></CardHeader><CardContent className="max-w-sm"><Field label="Expense amount" required error={fieldErrors["items.0.unitPrice"]}><Input inputMode="decimal" value={draft.items[0]?.unitPrice ?? "0.00"} onChange={(event) => setSimpleAmount(event.target.value)} /></Field></CardContent></Card> : null}
@@ -215,6 +247,17 @@ export function ExpenseFormPage() {
     </> : <Card><CardContent className="p-8 text-center text-sm text-muted-foreground">Select a category to continue.</CardContent></Card>}
     <p className="text-xs text-muted-foreground"><Link className="hover:underline" to="/expenses">Cancel and return to expenses</Link></p>
   </div>;
+}
+
+function PreviousDefaultsCard({ defaults, onApply }: { defaults: NonNullable<Awaited<ReturnType<typeof getRecentExpenseDefaults>>>; onApply: () => void }) {
+  const reusable = [
+    defaults.payee,
+    defaults.utilityType,
+    defaults.accountNumber ? `account ${defaults.accountNumber}` : undefined,
+    label(defaults.paymentMethod),
+    defaults.fundingSource ? label(defaults.fundingSource) : undefined,
+  ].filter(Boolean).join(" · ");
+  return <Card><CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium">Reuse details from {defaults.expenseNumber}?</p><p className="text-sm text-muted-foreground">{reusable || "Previous supplier and payment preferences are available."}</p><p className="text-xs text-muted-foreground">Amounts, invoice numbers, and transaction or billing dates are never copied.</p></div><Button type="button" variant="outline" onClick={onApply}>Use previous details</Button></CardContent></Card>;
 }
 
 function CategoryFields({ formType, draft, setDraft, suppliers, employeeOptions, fieldErrors }: {
@@ -278,7 +321,7 @@ function InventoryLines({ draft, setDraft, updateLine, inventory, fieldErrors }:
 
 function FundingFields({ draft, setDraft, employeeOptions, total, error, onSync }: { draft: ExpenseDraft; setDraft: React.Dispatch<React.SetStateAction<ExpenseDraft>>; employeeOptions: EmployeeOption[]; total?: string; error?: string; onSync: () => void }) {
   return <Card><CardHeader><div className="flex items-center justify-between"><div><h2 className="font-semibold">3. Source of funds</h2><p className="text-sm text-muted-foreground">Funding must equal the expense total. Personal payments create a reimbursement balance.</p></div><Button variant="outline" size="sm" onClick={() => setDraft({ ...draft, fundings: [...draft.fundings, { source: "SHOP_CASH", amount: "0.00" }] })}><Plus className="h-4 w-4" />Source</Button></div></CardHeader><CardContent className="space-y-3">
-    {draft.fundings.map((funding, index) => <div key={index} className="space-y-2 rounded-lg border p-3"><div className="grid gap-2 sm:grid-cols-[180px_160px_1fr_auto]"><Field label="Funding source" required><select className="h-10 rounded-md border bg-white px-3 text-sm" value={funding.source} onChange={(event) => setDraft({ ...draft, fundings: draft.fundings.map((item, itemIndex) => itemIndex === index ? { ...item, source: event.target.value as typeof funding.source, personPaid: event.target.value === "PERSONAL" ? item.personPaid : undefined, reimbursementRequired: event.target.value === "PERSONAL" ? item.reimbursementRequired ?? true : undefined } : item) })}><option value="SHOP_CASH">Shop cash</option><option value="SHOP_BANK">Shop bank</option><option value="SHOP_CARD">Shop card</option><option value="PERSONAL">Personal money</option><option value="OTHER">Other</option></select></Field><Field label="Amount" required><Input inputMode="decimal" value={funding.amount} onChange={(event) => setDraft({ ...draft, fundings: draft.fundings.map((item, itemIndex) => itemIndex === index ? { ...item, amount: event.target.value } : item) })} /></Field>{funding.source === "PERSONAL" ? <Field label="Person who paid" required><><select className="mb-2 h-10 w-full rounded-md border bg-white px-3 text-sm" value="" onChange={(event) => { const option = employeeOptions.find((candidate) => candidate.value === event.target.value); if (option) setDraft({ ...draft, fundings: draft.fundings.map((item, itemIndex) => itemIndex === index ? { ...item, personPaid: option.fullName } : item) }); }}><option value="">Select employee/user (optional)</option>{employeeOptions.map((option) => <option key={option.value} value={option.value}>{option.fullName}</option>)}</select><Input placeholder="Name of payer" value={funding.personPaid ?? ""} onChange={(event) => setDraft({ ...draft, fundings: draft.fundings.map((item, itemIndex) => itemIndex === index ? { ...item, personPaid: event.target.value } : item) })} /></></Field> : <Field label="Funding notes" optional><Input value={funding.notes ?? ""} onChange={(event) => setDraft({ ...draft, fundings: draft.fundings.map((item, itemIndex) => itemIndex === index ? { ...item, notes: event.target.value } : item) })} /></Field>}<div className="flex items-end"><Button variant="ghost" size="icon" disabled={draft.fundings.length === 1} onClick={() => setDraft({ ...draft, fundings: draft.fundings.filter((_, itemIndex) => itemIndex !== index) })}><Trash2 className="h-4 w-4" /></Button></div></div>{funding.source === "PERSONAL" ? <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={funding.reimbursementRequired ?? true} onChange={(event) => setDraft({ ...draft, fundings: draft.fundings.map((item, itemIndex) => itemIndex === index ? { ...item, reimbursementRequired: event.target.checked } : item) })} />Reimbursement is required</label> : null}</div>)}
+    {draft.fundings.map((funding, index) => { const selectedPayer = funding.personEmployeeId ? `employee:${funding.personEmployeeId}` : funding.personProfileId ? `profile:${funding.personProfileId}` : ""; return <div key={index} className="space-y-2 rounded-lg border p-3"><div className="grid gap-2 sm:grid-cols-[180px_160px_1fr_auto]"><Field label="Funding source" required><select className="h-10 rounded-md border bg-white px-3 text-sm" value={funding.source} onChange={(event) => setDraft({ ...draft, fundings: draft.fundings.map((item, itemIndex) => itemIndex === index ? { ...item, source: event.target.value as typeof funding.source, personEmployeeId: event.target.value === "PERSONAL" ? item.personEmployeeId : undefined, personProfileId: event.target.value === "PERSONAL" ? item.personProfileId : undefined, personPaid: event.target.value === "PERSONAL" ? item.personPaid : undefined, reimbursementRequired: event.target.value === "PERSONAL" ? item.reimbursementRequired ?? true : undefined } : item) })}><option value="SHOP_CASH">Shop cash</option><option value="SHOP_BANK">Shop bank</option><option value="SHOP_CARD">Shop card</option><option value="PERSONAL">Personal money</option><option value="OTHER">Other</option></select></Field><Field label="Amount" required><Input inputMode="decimal" value={funding.amount} onChange={(event) => setDraft({ ...draft, fundings: draft.fundings.map((item, itemIndex) => itemIndex === index ? { ...item, amount: event.target.value } : item) })} /></Field>{funding.source === "PERSONAL" ? <Field label="Person who paid" required helper="Choose an employee/user to preserve their identity for reimbursement, or enter a manual payer."><><select className="mb-2 h-10 w-full rounded-md border bg-white px-3 text-sm" value={selectedPayer} onChange={(event) => { const option = employeeOptions.find((candidate) => candidate.value === event.target.value); setDraft({ ...draft, fundings: draft.fundings.map((item, itemIndex) => itemIndex === index ? { ...item, personEmployeeId: option?.employeeId, personProfileId: option?.profileId, personPaid: option?.fullName ?? "" } : item) }); }}><option value="">Manual / non-login payer</option>{employeeOptions.map((option) => <option key={option.value} value={option.value}>{option.fullName}</option>)}</select><Input disabled={Boolean(selectedPayer)} placeholder="Name of payer" value={funding.personPaid ?? ""} onChange={(event) => setDraft({ ...draft, fundings: draft.fundings.map((item, itemIndex) => itemIndex === index ? { ...item, personEmployeeId: undefined, personProfileId: undefined, personPaid: event.target.value } : item) })} /></></Field> : <Field label="Funding notes" optional><Input value={funding.notes ?? ""} onChange={(event) => setDraft({ ...draft, fundings: draft.fundings.map((item, itemIndex) => itemIndex === index ? { ...item, notes: event.target.value } : item) })} /></Field>}<div className="flex items-end"><Button variant="ghost" size="icon" disabled={draft.fundings.length === 1} onClick={() => setDraft({ ...draft, fundings: draft.fundings.filter((_, itemIndex) => itemIndex !== index) })}><Trash2 className="h-4 w-4" /></Button></div></div>{funding.source === "PERSONAL" ? <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={funding.reimbursementRequired ?? true} onChange={(event) => setDraft({ ...draft, fundings: draft.fundings.map((item, itemIndex) => itemIndex === index ? { ...item, reimbursementRequired: event.target.checked } : item) })} />Reimbursement is required</label> : null}</div>; })}
     <div className="flex flex-wrap items-center gap-3"><Button variant="outline" size="sm" disabled={draft.fundings.length !== 1 || !total} onClick={onSync}>Use expense total</Button>{error ? <p className="text-sm text-destructive">{error}</p> : null}</div>
   </CardContent></Card>;
 }
@@ -336,4 +379,4 @@ interface ReceiptExtraction {
 }
 
 function toDraftLine(line: ExpenseLine): ExpenseLineDraft { return { inventoryItemId: line.inventoryItemId, description: line.description, quantity: line.quantity, unitType: line.unitType, conversionFactor: line.conversionFactor, unitPrice: line.unitPrice, taxAmount: line.taxAmount, additionalCharges: line.additionalCharges, discountAmount: line.discountAmount }; }
-function toDraftFunding(funding: ExpenseFunding) { return { source: funding.source, amount: funding.amount, personPaid: funding.personPaid, reimbursementRequired: funding.reimbursementRequired, notes: funding.notes }; }
+function toDraftFunding(funding: ExpenseFunding) { return { source: funding.source, amount: funding.amount, personEmployeeId: funding.personEmployeeId, personProfileId: funding.personProfileId, personPaid: funding.personPaid, reimbursementRequired: funding.reimbursementRequired, notes: funding.notes }; }
