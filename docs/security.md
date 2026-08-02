@@ -56,4 +56,15 @@ Audit fields:
 - old value
 - new value
 - timestamp
+
+Expense events additionally cover create/update, approval, paid finalization, void reason, receipt review, reimbursement, and inventory effects.
+
+## Expense and receipt controls
+
+- Expense permissions are granular (`expenses:read/create/update/approve/void/receipts/reimburse/categories/reports/export/inventory/salaries`). Admin receives them implicitly; cashiers require explicit `user_permissions` grants.
+- All expense RLS checks require an active same-branch profile. Frontend route/action checks are UX only.
+- Receipt files are stored in the private `expense-receipts` bucket at branch/user-prefixed paths, limited to approved image/PDF MIME types and 10 MB.
+- Signed receipt URLs expire after five minutes. A stored financial attachment cannot be client-deleted.
+- OCR provider and Supabase service-role keys exist only in the Edge Function environment. OCR JSON is untrusted, never rendered as HTML, and never auto-confirms an expense or stock movement.
+- Optimistic versions, row locks, request UUIDs, and unique stock-movement indexes protect concurrent and repeated operations.
 - IP address

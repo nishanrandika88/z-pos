@@ -249,3 +249,18 @@ Server state stays in TanStack Query.
 - Add read replicas or materialized views for large reporting workloads.
 - Add multi-register cash drawer reconciliation.
 - Add centralized product catalog with branch-specific pricing.
+
+## Expense Management
+
+The expense module follows the same UI -> repository -> Supabase boundary as orders, while all financial lifecycle writes use PostgreSQL RPCs. Its main records are `expenses`, line snapshots, funding contributions, reimbursements, salary detail, private receipt metadata, inventory items, and append-only stock movements.
+
+Key invariants:
+
+- PostgreSQL `numeric` and RPC-side recalculation are authoritative for money.
+- Funding contributions must equal the expense total.
+- Reimbursements settle personal funding and are not additional expenses.
+- Receipt OCR output remains untrusted draft JSON until an authorized review.
+- Stock is posted only on approval and each expense line can produce one purchase movement.
+- Finalized expenses are voided and stock movements reversed; they are not hard-deleted.
+
+See `docs/expense-management-plan.md` for the repository-specific domain, rollout, OCR comparison, and acceptance plan.

@@ -14,6 +14,7 @@ export interface UserProfile {
   active: boolean;
   branchId: string;
   branchName?: string;
+  permissions: string[];
 }
 
 export async function signInWithPassword(email: string, password: string) {
@@ -75,6 +76,12 @@ export async function loadCurrentProfile(): Promise<UserProfile | null> {
   if (error) throw error;
   if (!data) return null;
 
+  const { data: permissionRows, error: permissionError } = await supabase
+    .from("user_permissions")
+    .select("permission")
+    .eq("profile_id", user.id);
+  if (permissionError) throw permissionError;
+
   return {
     id: data.id,
     fullName: data.full_name,
@@ -84,6 +91,7 @@ export async function loadCurrentProfile(): Promise<UserProfile | null> {
     active: data.active,
     branchId: data.branch_id,
     branchName: relationName(data.branches, "Main Branch"),
+    permissions: (permissionRows ?? []).map((row) => row.permission),
   };
 }
 

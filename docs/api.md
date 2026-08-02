@@ -178,3 +178,17 @@ Important codes:
 - `DUPLICATE_BARCODE`
 - `ORDER_SYNC_CONFLICT`
 - `PAYMENT_CAPTURE_FAILED`
+
+## Expenses
+
+Transactional RPCs:
+
+- `create_expense(expense_payload)`: idempotent by branch/client request UUID; recalculates lines and requires balanced funding.
+- `update_expense(target_expense_id, expected_version, expense_payload)`: edits draft/pending records and rejects stale versions.
+- `approve_expense(target_expense_id, expected_version)`: approves and posts linked inventory exactly once.
+- `mark_expense_paid(target_expense_id, expected_version)`: finalizes payment after approval.
+- `void_expense(target_expense_id, expected_version, reason)`: records the reason and reverses posted stock when safe.
+- `record_expense_reimbursement(...)`: row-locks personal funding and prevents over-reimbursement.
+- `review_expense_receipt(target_receipt_id, corrected_payload)`: stores audited corrections without creating financial data.
+
+Master-data and list reads use the Supabase table API under RLS. Receipt extraction uses the authenticated `process-expense-receipt` Edge Function; provider keys are Edge Function secrets, never frontend environment variables.
