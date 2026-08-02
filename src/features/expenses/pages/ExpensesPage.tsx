@@ -2,22 +2,25 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Boxes, CircleDollarSign, ClipboardList, LayoutDashboard, Plus, RefreshCw, Tags, Users } from "lucide-react";
 import { Link, useSearchParams } from "react-router";
-import type { ExpenseCategoryKind, ExpenseFilters, UnitType } from "@/domain/expenses/types";
+import type { ExpenseFilters, ExpenseFormType, UnitType } from "@/domain/expenses/types";
 import { can } from "@/features/auth/rbac";
 import { useAuthStore } from "@/features/auth/stores/auth.store";
 import { ExpenseStatusBadge } from "@/features/expenses/components/ExpenseStatusBadge";
 import {
   createInventoryItem,
+  listEmployeeOptions,
+  listEmployees,
   listExpenseCategories,
   listExpenses,
   listInventoryItems,
   saveExpenseCategory,
+  saveEmployee,
 } from "@/features/expenses/expenses.repository";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 
-type ExpenseView = "dashboard" | "list" | "reimbursements" | "salaries" | "categories" | "inventory";
+type ExpenseView = "dashboard" | "list" | "reimbursements" | "salaries" | "employees" | "categories" | "inventory";
 const pageSize = 20;
 const currency = new Intl.NumberFormat("en-LK", { style: "currency", currency: "LKR" });
 const tabs: Array<{ id: ExpenseView; label: string; icon: typeof LayoutDashboard }> = [
@@ -25,6 +28,7 @@ const tabs: Array<{ id: ExpenseView; label: string; icon: typeof LayoutDashboard
   { id: "list", label: "All expenses", icon: ClipboardList },
   { id: "reimbursements", label: "Reimbursements", icon: CircleDollarSign },
   { id: "salaries", label: "Salaries", icon: Users },
+  { id: "employees", label: "Employees", icon: Users },
   { id: "categories", label: "Categories", icon: Tags },
   { id: "inventory", label: "Inventory", icon: Boxes },
 ];
@@ -46,13 +50,13 @@ export function ExpensesPage() {
   const expensesQuery = useQuery({
     queryKey: ["expenses", view, queryFilters, page],
     queryFn: () => listExpenses(queryFilters, { page: view === "dashboard" ? 1 : page, pageSize: view === "dashboard" ? 500 : pageSize }),
-    enabled: !["categories", "inventory"].includes(view) && (view !== "salaries" || Boolean(salaryCategory)),
+    enabled: !["categories", "inventory", "employees"].includes(view) && (view !== "salaries" || Boolean(salaryCategory)),
   });
   const expenses = expensesQuery.data?.expenses ?? [];
   const visibleTabs = tabs.filter((tab) => {
     if (tab.id === "categories") return can(profile?.role, "expenses:categories", profile?.permissions);
     if (tab.id === "inventory") return can(profile?.role, "expenses:inventory", profile?.permissions);
-    if (tab.id === "salaries") return can(profile?.role, "expenses:salaries", profile?.permissions);
+    if (["salaries", "employees"].includes(tab.id)) return can(profile?.role, "expenses:salaries", profile?.permissions);
     return true;
   });
 
@@ -100,6 +104,7 @@ export function ExpensesPage() {
       ) : null}
       {view === "categories" && profile ? <CategoryManager branchId={profile.branchId} userId={profile.id} categories={categoriesQuery.data ?? []} /> : null}
       {view === "inventory" && profile ? <InventoryManager branchId={profile.branchId} userId={profile.id} /> : null}
+      {view === "employees" && profile ? <EmployeeManager branchId={profile.branchId} userId={profile.id} /> : null}
     </div>
   );
 }
@@ -162,15 +167,48 @@ type ExpenseSummaryLike = Awaited<ReturnType<typeof listExpenses>>["expenses"][n
 function CategoryManager({ branchId, userId, categories }: { branchId: string; userId: string; categories: Awaited<ReturnType<typeof listExpenseCategories>> }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
-  const [kind, setKind] = useState<ExpenseCategoryKind>("OPERATIONAL");
+  const [formType, setFormType] = useState<ExpenseFormType>("GENERAL");
   const mutation = useMutation({
-    mutationFn: () => saveExpenseCategory({ branchId, userId, name, kind, active: true, displayOrder: categories.length * 10 + 10 }),
+    mutationFn: () => saveExpenseCategory({ branchId, userId, name, kind: kindForFormType(formType), formType, active: true, displayOrder: categories.length * 10 + 10 }),
     onSuccess: async () => { setName(""); await queryClient.invalidateQueries({ queryKey: ["expense-categories"] }); },
   });
   return <Card><CardHeader><h2 className="font-semibold">Expense categories</h2><p className="text-sm text-muted-foreground">Archive categories to preserve historical reports; add new categories at any time.</p></CardHeader><CardContent className="space-y-4">
-    <div className="grid gap-2 sm:grid-cols-[1fr_180px_auto]"><Input placeholder="New category name" value={name} onChange={(event) => setName(event.target.value)} /><select className="h-10 rounded-md border bg-white px-3 text-sm" value={kind} onChange={(event) => setKind(event.target.value as ExpenseCategoryKind)}><option value="OPERATIONAL">Operational</option><option value="INVENTORY">Inventory purchase</option><option value="SALARY">Salary</option></select><Button disabled={name.trim().length < 2 || mutation.isPending} onClick={() => mutation.mutate()}><Plus className="h-4 w-4" />Add</Button></div>
+    <div className="grid gap-2 sm:grid-cols-[1fr_220px_auto]"><Input placeholder="New category name" value={name} onChange={(event) => setName(event.target.value)} /><select className="h-10 rounded-md border bg-white px-3 text-sm" value={formType} onChange={(event) => setFormType(event.target.value as ExpenseFormType)}><option value="GENERAL">General expense</option><option value="SALARY">Salary</option><option value="RENT">Rent</option><option value="UTILITY">Utility bill</option><option value="INVENTORY_PURCHASE">Inventory purchase</option><option value="EQUIPMENT_REPAIR">Equipment or repair</option></select><Button disabled={name.trim().length < 2 || mutation.isPending} onClick={() => mutation.mutate()}><Plus className="h-4 w-4" />Add</Button></div>
     {mutation.error ? <p className="text-sm text-destructive">{mutation.error.message}</p> : null}
-    <div className="divide-y rounded-md border">{categories.map((category) => <div key={category.id} className="flex items-center justify-between p-3"><div><p className="font-medium">{category.name}</p><p className="text-xs text-muted-foreground">{labelWords(category.kind)} · {category.active ? "Active" : "Archived"}</p></div><Button variant="outline" size="sm" onClick={() => void saveExpenseCategory({ id: category.id, branchId, userId, name: category.name, kind: category.kind, active: !category.active, displayOrder: category.displayOrder }).then(() => queryClient.invalidateQueries({ queryKey: ["expense-categories"] }))}>{category.active ? "Archive" : "Restore"}</Button></div>)}</div>
+    <div className="divide-y rounded-md border">{categories.map((category) => <div key={category.id} className="flex items-center justify-between p-3"><div><p className="font-medium">{category.name}</p><p className="text-xs text-muted-foreground">{labelWords(category.formType)} · {category.active ? "Active" : "Archived"}</p></div><Button variant="outline" size="sm" onClick={() => void saveExpenseCategory({ id: category.id, branchId, userId, name: category.name, kind: category.kind, formType: category.formType, active: !category.active, displayOrder: category.displayOrder }).then(() => queryClient.invalidateQueries({ queryKey: ["expense-categories"] }))}>{category.active ? "Archive" : "Restore"}</Button></div>)}</div>
+  </CardContent></Card>;
+}
+
+function EmployeeManager({ branchId, userId }: { branchId: string; userId: string }) {
+  const queryClient = useQueryClient();
+  const employeesQuery = useQuery({ queryKey: ["expense-employees", "all"], queryFn: () => listEmployees(true) });
+  const optionsQuery = useQuery({ queryKey: ["expense-employee-options"], queryFn: listEmployeeOptions });
+  const [fullName, setFullName] = useState("");
+  const [employeeNumber, setEmployeeNumber] = useState("");
+  const [jobTitle, setJobTitle] = useState("");
+  const [profileId, setProfileId] = useState("");
+  const mutation = useMutation({
+    mutationFn: () => saveEmployee({ branchId, userId, fullName, employeeNumber, jobTitle, profileId, active: true }),
+    onSuccess: async () => {
+      setFullName(""); setEmployeeNumber(""); setJobTitle(""); setProfileId("");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["expense-employees"] }),
+        queryClient.invalidateQueries({ queryKey: ["expense-employee-options"] }),
+      ]);
+    },
+  });
+  const availableUsers = (optionsQuery.data ?? []).filter((option) => option.source === "USER");
+  async function toggleEmployee(employee: Awaited<ReturnType<typeof listEmployees>>[number]) {
+    await saveEmployee({ id: employee.id, branchId, userId, profileId: employee.profileId, employeeNumber: employee.employeeNumber, fullName: employee.fullName, jobTitle: employee.jobTitle, active: !employee.active });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["expense-employees"] }),
+      queryClient.invalidateQueries({ queryKey: ["expense-employee-options"] }),
+    ]);
+  }
+  return <Card><CardHeader><h2 className="font-semibold">Employees</h2><p className="text-sm text-muted-foreground">Employees can be linked to a system login, but a login is not required.</p></CardHeader><CardContent className="space-y-4">
+    <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[1fr_150px_1fr_1fr_auto]"><Input placeholder="Full name" value={fullName} onChange={(event) => setFullName(event.target.value)} /><Input placeholder="Employee no." value={employeeNumber} onChange={(event) => setEmployeeNumber(event.target.value)} /><Input placeholder="Job title (optional)" value={jobTitle} onChange={(event) => setJobTitle(event.target.value)} /><select className="h-10 rounded-md border bg-white px-3 text-sm" value={profileId} onChange={(event) => { const next = event.target.value; setProfileId(next); const selected = availableUsers.find((option) => option.profileId === next); if (selected && !fullName.trim()) setFullName(selected.fullName); }}><option value="">No login linked</option>{availableUsers.map((option) => <option key={option.value} value={option.profileId}>{option.fullName}</option>)}</select><Button disabled={fullName.trim().length < 2 || mutation.isPending} onClick={() => mutation.mutate()}><Plus className="h-4 w-4" />Add</Button></div>
+    {mutation.error ? <p className="text-sm text-destructive">{mutation.error.message}</p> : null}
+    <div className="divide-y rounded-md border">{(employeesQuery.data ?? []).map((employee) => <div key={employee.id} className="flex items-center justify-between gap-3 p-3"><div><p className="font-medium">{employee.fullName}</p><p className="text-xs text-muted-foreground">{[employee.employeeNumber, employee.jobTitle, employee.profileId ? "Login linked" : undefined].filter(Boolean).join(" · ") || "Employee"}</p></div><Button variant="outline" size="sm" onClick={() => void toggleEmployee(employee)}>{employee.active ? "Archive" : "Restore"}</Button></div>)}</div>
   </CardContent></Card>;
 }
 
@@ -193,5 +231,6 @@ function UnitSelect({ value, onChange }: { value: UnitType; onChange: (value: Un
 }
 
 function labelWords(value: string) { return value.toLowerCase().replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase()); }
+function kindForFormType(formType: ExpenseFormType) { return formType === "SALARY" ? "SALARY" as const : formType === "INVENTORY_PURCHASE" ? "INVENTORY" as const : "OPERATIONAL" as const; }
 function localDate() { const now = new Date(); return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
 function firstDayOfMonth() { return `${localDate().slice(0, 8)}01`; }

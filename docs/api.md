@@ -192,3 +192,5 @@ Transactional RPCs:
 - `review_expense_receipt(target_receipt_id, corrected_payload)`: stores audited corrections without creating financial data.
 
 Master-data and list reads use the Supabase table API under RLS. Receipt extraction uses the authenticated `process-expense-receipt` Edge Function; provider keys are Edge Function secrets, never frontend environment variables.
+
+Expense categories expose a stable `form_type` (`GENERAL`, `SALARY`, `RENT`, `UTILITY`, `INVENTORY_PURCHASE`, or `EQUIPMENT_REPAIR`) in addition to their reporting `kind`. RPC validation uses this stable type rather than the editable category name. Rent, utility, and equipment fields are stored in `expense_category_details`; salary records may reference either a standalone `employees` record, a login `profile`, or a manual name snapshot. Personal funding keeps the payer name snapshot and, when selected, the linked employee/profile identity used as the reimbursement recipient.
