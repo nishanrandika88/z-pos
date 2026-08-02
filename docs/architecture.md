@@ -252,7 +252,9 @@ Server state stays in TanStack Query.
 
 ## Expense Management
 
-The expense module follows the same UI -> repository -> Supabase boundary as orders, while all financial lifecycle writes use PostgreSQL RPCs. Its main records are `expenses`, line snapshots, funding contributions, reimbursements, salary detail, private receipt metadata, inventory items, and append-only stock movements.
+The expense module follows the same UI -> repository -> Supabase boundary as orders, while all financial lifecycle writes use PostgreSQL RPCs. Its main records are `expenses`, line snapshots, funding contributions, reimbursements, salary detail, category-specific detail, employees, private receipt metadata, inventory items, and append-only stock movements.
+
+The entry UI uses category-first progressive disclosure. `expense_categories.form_type` controls form behavior independently of editable category names, while `kind` remains the broader reporting classification. Authentication profiles remain login identities; branch-scoped employees are separate and may optionally link to a profile so non-login employees are supported.
 
 Key invariants:
 
@@ -262,5 +264,7 @@ Key invariants:
 - Receipt OCR output remains untrusted draft JSON until an authorized review.
 - Stock is posted only on approval and each expense line can produce one purchase movement.
 - Finalized expenses are voided and stock movements reversed; they are not hard-deleted.
+- Hidden category fields are removed from the payload after an explicit category-change confirmation.
+- Marking a salary expense paid also synchronizes its salary payment status and payment date.
 
 See `docs/expense-management-plan.md` for the repository-specific domain, rollout, OCR comparison, and acceptance plan.

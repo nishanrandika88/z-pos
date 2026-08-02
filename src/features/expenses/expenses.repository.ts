@@ -1,6 +1,8 @@
 /* Supabase is not configured with generated Database types in this repository; mapping is isolated below. */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type {
+  EmployeeOption,
+  EmployeeRecord,
   ExpenseCategory,
   ExpenseDetail,
   ExpenseDraft,
@@ -20,7 +22,7 @@ const expenseSelect = `
   description, subtotal, tax_total, additional_charges_total, discount_total, grand_total,
   payment_method, status, update_inventory, version, created_at, updated_at, approved_at, paid_at,
   voided_at, void_reason,
-  category:expense_categories!expenses_category_id_fkey(name, kind),
+  category:expense_categories!expenses_category_id_fkey(name, kind, form_type),
   created_profile:profiles!expenses_created_by_fkey(full_name, display_name),
   updated_profile:profiles!expenses_updated_by_fkey(full_name, display_name),
   fundings:expense_fundings!inner(id, source, amount, person_paid, reimbursement_required, notes, reimbursements:expense_reimbursements(id, amount, reimbursement_date, notes))
@@ -43,7 +45,7 @@ export interface SupplierOption {
 export async function listExpenseCategories(includeArchived = false): Promise<ExpenseCategory[]> {
   let query = supabase
     .from("expense_categories")
-    .select("id, name, kind, active, display_order")
+    .select("id, name, kind, form_type, active, display_order")
     .order("display_order")
     .order("name");
   if (!includeArchived) query = query.eq("active", true);
@@ -53,6 +55,7 @@ export async function listExpenseCategories(includeArchived = false): Promise<Ex
     id: row.id,
     name: row.name,
     kind: row.kind,
+    formType: row.form_type,
     active: row.active,
     displayOrder: row.display_order,
   }));
@@ -63,6 +66,7 @@ export async function saveExpenseCategory(input: {
   branchId: string;
   name: string;
   kind: ExpenseCategory["kind"];
+  formType: ExpenseCategory["formType"];
   active: boolean;
   displayOrder?: number;
   userId: string;
@@ -71,6 +75,7 @@ export async function saveExpenseCategory(input: {
     branch_id: input.branchId,
     name: input.name.trim(),
     kind: input.kind,
+    form_type: input.formType,
     active: input.active,
     display_order: input.displayOrder ?? 0,
     updated_by: input.userId,
@@ -79,6 +84,79 @@ export async function saveExpenseCategory(input: {
   const query = input.id
     ? supabase.from("expense_categories").update(payload).eq("id", input.id)
     : supabase.from("expense_categories").insert(payload);
+  const { error } = await query;
+  if (error) throw error;
+}
+
+export async function listEmployees(includeArchived = false): Promise<EmployeeRecord[]> {
+  let query = supabase
+    .from("employees")
+    .select("id, profile_id, employee_number, full_name, job_title, active")
+    .order("full_name");
+  if (!includeArchived) query = query.eq("active", true);
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    profileId: row.profile_id ?? undefined,
+    employeeNumber: row.employee_number ?? undefined,
+    fullName: row.full_name,
+    jobTitle: row.job_title ?? undefined,
+    active: row.active,
+  }));
+}
+
+export async function listEmployeeOptions(): Promise<EmployeeOption[]> {
+  const [employees, profilesResult] = await Promise.all([
+    listEmployees(),
+    supabase.from("profiles").select("id, full_name, display_name, active").eq("active", true).order("full_name"),
+  ]);
+  if (profilesResult.error) throw profilesResult.error;
+  const linkedProfileIds = new Set(employees.flatMap((employee) => employee.profileId ? [employee.profileId] : []));
+  return [
+    ...employees.map((employee) => ({
+      value: `employee:${employee.id}`,
+      employeeId: employee.id,
+      profileId: employee.profileId,
+      fullName: employee.fullName,
+      detail: [employee.employeeNumber, employee.jobTitle].filter(Boolean).join(" · ") || "Employee",
+      source: "EMPLOYEE" as const,
+    })),
+    ...(profilesResult.data ?? [])
+      .filter((profile) => !linkedProfileIds.has(profile.id))
+      .map((profile) => ({
+        value: `profile:${profile.id}`,
+        profileId: profile.id,
+        fullName: profile.full_name,
+        detail: `${profile.display_name || profile.full_name} · System user`,
+        source: "USER" as const,
+      })),
+  ];
+}
+
+export async function saveEmployee(input: {
+  id?: string;
+  branchId: string;
+  userId: string;
+  profileId?: string;
+  employeeNumber?: string;
+  fullName: string;
+  jobTitle?: string;
+  active: boolean;
+}) {
+  const payload = {
+    branch_id: input.branchId,
+    profile_id: input.profileId || null,
+    employee_number: input.employeeNumber?.trim() || null,
+    full_name: input.fullName.trim(),
+    job_title: input.jobTitle?.trim() || null,
+    active: input.active,
+    updated_by: input.userId,
+    ...(input.id ? {} : { created_by: input.userId }),
+  };
+  const query = input.id
+    ? supabase.from("employees").update(payload).eq("id", input.id)
+    : supabase.from("employees").insert(payload);
   const { error } = await query;
   if (error) throw error;
 }
@@ -188,13 +266,14 @@ export async function listExpenses(filters: ExpenseFilters, options: PageOptions
 export async function getExpense(id: string): Promise<ExpenseDetail> {
   const { data, error } = await supabase
     .from("expenses")
-    .select(`${expenseSelect}, items:expense_items(id, inventory_item_id, description, quantity, unit_type, conversion_factor, base_quantity, unit_price, tax_amount, additional_charges, discount_amount, line_total, inventory_posted_at, inventory:inventory_items(name)), salary:salary_expense_details(employee_profile_id, employee_name_snapshot, salary_period_start, salary_period_end, basic_salary, allowances, deductions, advance_payments, net_amount, payment_date, payment_status, notes), receipts:expense_receipts(id, storage_path, original_file_name, mime_type, file_size, file_hash, processing_status, ocr_provider, extracted_data, corrected_data, error_message, duplicate_of_id, created_at)`)
+    .select(`${expenseSelect}, items:expense_items(id, inventory_item_id, description, quantity, unit_type, conversion_factor, base_quantity, unit_price, tax_amount, additional_charges, discount_amount, line_total, inventory_posted_at, inventory:inventory_items(name)), salary:salary_expense_details(employee_id, employee_profile_id, employee_name_snapshot, salary_period_start, salary_period_end, basic_salary, allowances, deductions, advance_payments, net_amount, payment_date, payment_status, notes), category_details:expense_category_details(form_type, period_start, period_end, due_date, payment_date, utility_type, account_number, equipment_details, service_date, warranty_information), receipts:expense_receipts(id, storage_path, original_file_name, mime_type, file_size, file_hash, processing_status, ocr_provider, extracted_data, corrected_data, error_message, duplicate_of_id, created_at)`)
     .eq("id", id)
     .single();
   if (error) throw error;
 
   const summary = mapExpenseSummary(data);
   const salary = first(data.salary);
+  const categoryDetails = first(data.category_details);
   return {
     ...summary,
     voidReason: data.void_reason ?? undefined,
@@ -204,6 +283,7 @@ export async function getExpense(id: string): Promise<ExpenseDetail> {
     items: (data.items ?? []).map(mapExpenseLine),
     fundings: (data.fundings ?? []).map(mapExpenseFunding),
     salary: salary ? {
+      employeeId: salary.employee_id ?? undefined,
       employeeProfileId: salary.employee_profile_id ?? undefined,
       employeeName: salary.employee_name_snapshot,
       periodStart: salary.salary_period_start,
@@ -215,6 +295,17 @@ export async function getExpense(id: string): Promise<ExpenseDetail> {
       paymentDate: salary.payment_date ?? undefined,
       paymentStatus: salary.payment_status,
       notes: salary.notes ?? undefined,
+    } : undefined,
+    categoryDetails: categoryDetails ? {
+      periodStart: categoryDetails.period_start ?? undefined,
+      periodEnd: categoryDetails.period_end ?? undefined,
+      dueDate: categoryDetails.due_date ?? undefined,
+      paymentDate: categoryDetails.payment_date ?? undefined,
+      utilityType: categoryDetails.utility_type ?? undefined,
+      accountNumber: categoryDetails.account_number ?? undefined,
+      equipmentDetails: categoryDetails.equipment_details ?? undefined,
+      serviceDate: categoryDetails.service_date ?? undefined,
+      warrantyInformation: categoryDetails.warranty_information ?? undefined,
     } : undefined,
     receipts: (data.receipts ?? []).map(mapReceipt),
   };
@@ -370,6 +461,7 @@ function mapExpenseSummary(row: any): ExpenseSummary {
     categoryId: row.category_id,
     categoryName: category?.name ?? "Uncategorized",
     categoryKind: category?.kind ?? "OPERATIONAL",
+    categoryFormType: category?.form_type ?? "GENERAL",
     supplierId: row.supplier_id ?? undefined,
     payee: row.payee_snapshot ?? undefined,
     invoiceNumber: row.invoice_number ?? undefined,

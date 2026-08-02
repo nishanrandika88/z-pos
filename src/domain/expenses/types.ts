@@ -1,4 +1,5 @@
 export type ExpenseCategoryKind = "OPERATIONAL" | "INVENTORY" | "SALARY";
+export type ExpenseFormType = "GENERAL" | "SALARY" | "RENT" | "UTILITY" | "INVENTORY_PURCHASE" | "EQUIPMENT_REPAIR";
 export type ExpenseStatus = "DRAFT" | "PENDING_APPROVAL" | "APPROVED" | "PAID" | "VOID";
 export type ExpensePaymentMethod = "CASH" | "CARD" | "BANK_TRANSFER" | "LANKAQR" | "OTHER";
 export type FundSource = "SHOP_CASH" | "SHOP_BANK" | "SHOP_CARD" | "PERSONAL" | "OTHER";
@@ -9,6 +10,7 @@ export interface ExpenseCategory {
   id: string;
   name: string;
   kind: ExpenseCategoryKind;
+  formType: ExpenseFormType;
   active: boolean;
   displayOrder: number;
 }
@@ -34,6 +36,7 @@ export interface ExpenseFundingDraft {
 }
 
 export interface SalaryExpenseDraft {
+  employeeId?: string;
   employeeProfileId?: string;
   employeeName: string;
   periodStart: string;
@@ -45,6 +48,18 @@ export interface SalaryExpenseDraft {
   paymentDate?: string;
   paymentStatus: "PENDING" | "PARTIALLY_PAID" | "PAID";
   notes?: string;
+}
+
+export interface ExpenseCategoryDetailsDraft {
+  periodStart?: string;
+  periodEnd?: string;
+  dueDate?: string;
+  paymentDate?: string;
+  utilityType?: string;
+  accountNumber?: string;
+  equipmentDetails?: string;
+  serviceDate?: string;
+  warrantyInformation?: string;
 }
 
 export interface ExpenseDraft {
@@ -61,6 +76,7 @@ export interface ExpenseDraft {
   items: ExpenseLineDraft[];
   fundings: ExpenseFundingDraft[];
   salary?: SalaryExpenseDraft;
+  categoryDetails?: ExpenseCategoryDetailsDraft;
 }
 
 export interface ExpenseTotals {
@@ -78,6 +94,7 @@ export interface ExpenseSummary extends ExpenseTotals {
   categoryId: string;
   categoryName: string;
   categoryKind: ExpenseCategoryKind;
+  categoryFormType: ExpenseFormType;
   supplierId?: string;
   payee?: string;
   invoiceNumber?: string;
@@ -134,6 +151,7 @@ export interface ExpenseDetail extends ExpenseSummary {
   items: ExpenseLine[];
   fundings: ExpenseFunding[];
   salary?: SalaryExpenseDraft;
+  categoryDetails?: ExpenseCategoryDetailsDraft;
   receipts: ExpenseReceipt[];
 }
 
@@ -162,4 +180,22 @@ export interface InventoryItem {
   reorderLevel: string;
   catalogItemId?: string;
   active: boolean;
+}
+
+export interface EmployeeRecord {
+  id: string;
+  profileId?: string;
+  employeeNumber?: string;
+  fullName: string;
+  jobTitle?: string;
+  active: boolean;
+}
+
+export interface EmployeeOption {
+  value: string;
+  employeeId?: string;
+  profileId?: string;
+  fullName: string;
+  detail?: string;
+  source: "EMPLOYEE" | "USER";
 }

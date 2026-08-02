@@ -47,7 +47,7 @@ describe("expense reporting", () => {
   it("excludes reimbursement from expense total and separates funding", () => {
     const expense: ExpenseSummary = {
       id: "expense-1", expenseNumber: "EXP-1", expenseDate: "2026-08-01T00:00:00.000Z",
-      categoryId: "category-1", categoryName: "Ingredients", categoryKind: "INVENTORY",
+      categoryId: "category-1", categoryName: "Ingredients", categoryKind: "INVENTORY", categoryFormType: "INVENTORY_PURCHASE",
       payee: "Supplier", subtotal: "1000.00", taxTotal: "0.00", additionalChargesTotal: "0.00",
       discountTotal: "0.00", grandTotal: "1000.00", paymentMethod: "CASH", status: "PAID",
       fundingSources: ["SHOP_CASH", "PERSONAL"], personalAmount: "400.00", reimbursableAmount: "400.00", reimbursedAmount: "250.00",
