@@ -188,6 +188,7 @@ Transactional RPCs:
 - `approve_expense(target_expense_id, expected_version)`: approves and posts linked inventory exactly once.
 - `mark_expense_paid(target_expense_id, expected_version)`: finalizes payment after approval.
 - `void_expense(target_expense_id, expected_version, reason)`: records the reason and reverses posted stock when safe.
+- `reopen_void_expense(target_expense_id, expected_version)`: admin-only recovery that returns a voided record to draft while retaining its audited purchase/reversal stock history.
 - `record_expense_reimbursement(...)`: row-locks personal funding and prevents over-reimbursement.
 - `review_expense_receipt(target_receipt_id, corrected_payload)`: stores audited corrections without creating financial data.
 

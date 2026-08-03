@@ -396,6 +396,15 @@ export async function voidExpense(id: string, version: number, reason: string) {
   return data as number;
 }
 
+export async function reopenVoidExpense(id: string, version: number) {
+  const { data, error } = await supabase.rpc("reopen_void_expense", {
+    target_expense_id: id,
+    expected_version: version,
+  });
+  if (error) throw error;
+  return data as number;
+}
+
 export async function recordReimbursement(input: { fundingId: string; amount: string; date: string; notes?: string }) {
   const { data, error } = await supabase.rpc("record_expense_reimbursement", {
     target_funding_id: input.fundingId,

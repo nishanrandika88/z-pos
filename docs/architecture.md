@@ -264,6 +264,7 @@ Key invariants:
 - Receipt OCR output remains untrusted draft JSON until an authorized review.
 - Stock is posted only on approval and each expense line can produce one purchase movement.
 - Finalized expenses are voided and stock movements reversed; they are not hard-deleted.
+- Administrators may reopen a voided expense as a draft. Historical purchase/reversal movements remain linked to the expense but are detached from the editable lines, allowing corrected lines to post stock exactly once after re-approval.
 - Hidden category fields are removed from the payload after an explicit category-change confirmation.
 - Marking a salary expense paid also synchronizes its salary payment status and payment date.
 

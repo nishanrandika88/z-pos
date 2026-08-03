@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, CheckCircle2, ExternalLink, Pencil, Undo2, WalletCards } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ExternalLink, Pencil, RotateCcw, Undo2, WalletCards } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router";
 import { can } from "@/features/auth/rbac";
 import { useAuthStore } from "@/features/auth/stores/auth.store";
@@ -11,6 +11,7 @@ import {
   getExpense,
   markExpensePaid,
   recordReimbursement,
+  reopenVoidExpense,
   voidExpense,
 } from "@/features/expenses/expenses.repository";
 import { Button } from "@/shared/ui/button";
@@ -27,15 +28,23 @@ export function ExpenseDetailPage() {
   const expenseQuery = useQuery({ queryKey: ["expense", expenseId], queryFn: () => getExpense(expenseId), enabled: Boolean(expenseId) });
   const [notice, setNotice] = useState<string>();
   const actionMutation = useMutation({
-    mutationFn: async (action: "approve" | "paid" | "void") => {
+    mutationFn: async (action: "approve" | "paid" | "void" | "reopen") => {
       const expense = expenseQuery.data!;
       if (action === "approve") return approveExpense(expense.id, expense.version);
       if (action === "paid") return markExpensePaid(expense.id, expense.version);
+      if (action === "reopen") return reopenVoidExpense(expense.id, expense.version);
       const reason = window.prompt("Why is this financial record being voided?")?.trim();
       if (!reason) throw new Error("A void reason is required.");
       return voidExpense(expense.id, expense.version, reason);
     },
-    onSuccess: async () => { setNotice("Expense status updated and audited."); await Promise.all([queryClient.invalidateQueries({ queryKey: ["expense", expenseId] }), queryClient.invalidateQueries({ queryKey: ["expenses"] })]); },
+    onSuccess: async (_, action) => {
+      await Promise.all([queryClient.invalidateQueries({ queryKey: ["expense", expenseId] }), queryClient.invalidateQueries({ queryKey: ["expenses"] })]);
+      if (action === "reopen") {
+        navigate(`/expenses/${expenseId}/edit`);
+        return;
+      }
+      setNotice("Expense status updated and audited.");
+    },
   });
 
   if (expenseQuery.isLoading) return <p className="p-6 text-sm text-muted-foreground">Loading expense…</p>;
@@ -53,6 +62,7 @@ export function ExpenseDetailPage() {
           {canUpdate && ["DRAFT", "PENDING_APPROVAL"].includes(expense.status) ? <Link className="inline-flex h-10 items-center gap-2 rounded-full border bg-white px-4 text-sm font-medium" to={`/expenses/${expense.id}/edit`}><Pencil className="h-4 w-4" />Edit</Link> : null}
           {canApprove && expense.status === "PENDING_APPROVAL" ? <Button disabled={actionMutation.isPending} onClick={() => actionMutation.mutate("approve")}><CheckCircle2 className="h-4 w-4" />Approve</Button> : null}
           {canApprove && expense.status === "APPROVED" ? <Button disabled={actionMutation.isPending} onClick={() => actionMutation.mutate("paid")}><WalletCards className="h-4 w-4" />Mark paid</Button> : null}
+          {profile?.role === "ADMIN" && expense.status === "VOID" ? <Button variant="outline" disabled={actionMutation.isPending} onClick={() => { if (window.confirm("Reopen this voided expense as a draft? Its previous approval, void, and stock reversal remain in the audit history. Stock will be posted again only after the edited expense is submitted and approved.")) actionMutation.mutate("reopen"); }}><RotateCcw className="h-4 w-4" />Reopen and edit</Button> : null}
           {canVoid && expense.status !== "VOID" ? <Button variant="destructive" disabled={actionMutation.isPending} onClick={() => actionMutation.mutate("void")}><Undo2 className="h-4 w-4" />Void</Button> : null}
         </div>
       </div>

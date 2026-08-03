@@ -59,6 +59,8 @@ Audit fields:
 
 Expense events additionally cover create/update, approval, paid finalization, void reason, receipt review, reimbursement, and inventory effects.
 
+Reopening a voided expense is restricted to active administrators in the same branch. It requires an optimistic version match, blocks expenses with reimbursements or incomplete stock reversals, and writes a dedicated audit event before the record becomes editable.
+
 ## Expense and receipt controls
 
 - Expense permissions are granular (`expenses:read/create/update/approve/void/receipts/reimburse/categories/reports/export/inventory/salaries`). Admin receives them implicitly; cashiers require explicit `user_permissions` grants.
