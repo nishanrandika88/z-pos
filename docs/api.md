@@ -141,6 +141,33 @@ Rules:
 - Save order, order items, payment, and audit event in one transaction.
 - Print only after this RPC succeeds.
 
+### Correct Order Payment
+
+`POST /rpc/correct_order_payment`
+
+Request:
+
+```json
+{
+  "target_order_id": "order-uuid",
+  "payment_payload": {
+    "method": "CARD",
+    "cardType": "Visa",
+    "bankName": "Example Bank",
+    "last4": "1234"
+  },
+  "correction_reason": "Card payment was entered as cash"
+}
+```
+
+Rules:
+
+- Branch administrator only.
+- Only the single payment on a completed order is corrected; order totals, items, discounts, and inventory are unchanged.
+- Card corrections require card type, bank name, and last four digits. Full card numbers, CVV, and PIN are never accepted.
+- Cash corrections require an amount tendered at least equal to the order total; balance is recalculated by the database.
+- The previous and corrected payment details plus the required reason are written to the audit log.
+
 ## Reports
 
 Recommended RPC/view endpoints:

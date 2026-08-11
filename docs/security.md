@@ -43,6 +43,7 @@ Events:
 - category change
 - discount change
 - order creation
+- order payment correction (old/new payment details and required reason)
 - order cancellation
 - manual bill discount
 - receipt reprint

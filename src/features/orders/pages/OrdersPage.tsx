@@ -1,12 +1,12 @@
-import { type MouseEvent, useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { CalendarDays, CreditCard, Landmark, Printer, QrCode, Search, Wallet, X } from "lucide-react";
+import { type FormEvent, type MouseEvent, useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CalendarDays, CreditCard, Landmark, Pencil, Printer, QrCode, Search, Wallet, X } from "lucide-react";
 import { can } from "@/features/auth/rbac";
 import { useAuthStore } from "@/features/auth/stores/auth.store";
-import { auditReceiptReprint, listOrders } from "@/features/orders/orders.repository";
-import { writeCachedOrders } from "@/features/orders/orders-cache";
+import { auditReceiptReprint, correctOrderPayment, listOrders } from "@/features/orders/orders.repository";
+import { clearCachedOrders, writeCachedOrders } from "@/features/orders/orders-cache";
 import { printReceipt } from "@/features/orders/receipt-print";
-import type { OrderFilters, OrderPayment, OrderSummary } from "@/features/orders/types";
+import type { OrderFilters, OrderPayment, OrderPaymentCorrection, OrderSummary, PaymentMethod } from "@/features/orders/types";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
@@ -20,7 +20,9 @@ const emptyOrderResult = { orders: emptyOrders, hasMore: false };
 
 export function OrdersPage() {
   const profile = useAuthStore((state) => state.profile);
+  const queryClient = useQueryClient();
   const canReprint = can(profile?.role, "orders:reprint", profile?.permissions);
+  const canCorrectPayment = profile?.role === "ADMIN";
   const [filters, setFilters] = useState<OrderFilters>({});
   const [draftFilters, setDraftFilters] = useState<OrderFilters>({});
   const [page, setPage] = useState(1);
@@ -45,6 +47,21 @@ export function OrdersPage() {
     () => orders.find((order) => order.id === selectedOrderId) ?? orders[0],
     [orders, selectedOrderId],
   );
+
+  const correctPaymentMutation = useMutation({
+    mutationFn: correctOrderPayment,
+    onSuccess: async () => {
+      clearCachedOrders();
+      await queryClient.invalidateQueries({ queryKey: ["orders"] });
+      setNotice({ tone: "success", message: "Payment method corrected and added to the audit log." });
+    },
+    onError: (mutationError) => {
+      setNotice({
+        tone: "error",
+        message: mutationError instanceof Error ? mutationError.message : "Could not correct the payment method.",
+      });
+    },
+  });
 
   async function printSelectedReceipt() {
     if (!selectedOrder) return;
@@ -81,7 +98,7 @@ export function OrdersPage() {
       <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Orders</h1>
-          <p className="text-muted-foreground">Search orders, view details, and reprint receipts when allowed.</p>
+          <p className="text-muted-foreground">Search orders, review details, and reprint receipts. Admins can correct payment methods.</p>
         </div>
       </div>
       {notice ? <NoticeToast notice={notice} onClose={() => setNotice(null)} /> : null}
@@ -244,7 +261,16 @@ export function OrdersPage() {
           </CardHeader>
           <CardContent>
             {selectedOrder ? (
-              <OrderDetails order={selectedOrder} canReprint={canReprint} />
+              <OrderDetails
+                key={selectedOrder.id}
+                order={selectedOrder}
+                canReprint={canReprint}
+                canCorrectPayment={canCorrectPayment}
+                correctionPending={correctPaymentMutation.isPending}
+                onCorrectPayment={async (correction) => {
+                  await correctPaymentMutation.mutateAsync(correction);
+                }}
+              />
             ) : (
               <div className="grid min-h-64 place-items-center text-muted-foreground">Select an order.</div>
             )}
@@ -277,7 +303,19 @@ function normalizeFilters(filters: OrderFilters): OrderFilters {
   return normalized;
 }
 
-function OrderDetails({ order, canReprint }: { order: OrderSummary; canReprint: boolean }) {
+function OrderDetails({
+  order,
+  canReprint,
+  canCorrectPayment,
+  correctionPending,
+  onCorrectPayment,
+}: {
+  order: OrderSummary;
+  canReprint: boolean;
+  canCorrectPayment: boolean;
+  correctionPending: boolean;
+  onCorrectPayment: (correction: OrderPaymentCorrection) => Promise<void>;
+}) {
   const payment = order.payments[0];
 
   return (
@@ -323,9 +361,153 @@ function OrderDetails({ order, canReprint }: { order: OrderSummary; canReprint: 
         </div>
       </div>
 
-      {payment ? <PaymentBox payment={payment} /> : null}
+      {payment ? (
+        <div className="space-y-3">
+          <PaymentBox payment={payment} />
+          {canCorrectPayment && order.status === "COMPLETED" && order.payments.length === 1 ? (
+            <PaymentCorrectionForm
+              key={`${payment.id}:${payment.method}:${payment.amountTendered ?? ""}:${payment.cardLast4 ?? ""}`}
+              order={order}
+              payment={payment}
+              pending={correctionPending}
+              onSubmit={onCorrectPayment}
+            />
+          ) : null}
+        </div>
+      ) : null}
       {!canReprint ? <p className="text-xs text-brand-espresso/60">Reprint requires admin or cashier reprint permission.</p> : null}
     </div>
+  );
+}
+
+function PaymentCorrectionForm({
+  order,
+  payment,
+  pending,
+  onSubmit,
+}: {
+  order: OrderSummary;
+  payment: OrderPayment;
+  pending: boolean;
+  onSubmit: (correction: OrderPaymentCorrection) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [method, setMethod] = useState<PaymentMethod>(payment.method);
+  const [amountTendered, setAmountTendered] = useState(String(payment.amountTendered ?? order.grandTotal));
+  const [cardType, setCardType] = useState(payment.cardType ?? "Visa");
+  const [bankName, setBankName] = useState(payment.bankName ?? "");
+  const [last4, setLast4] = useState(payment.cardLast4 ?? "");
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  async function saveCorrection(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const cleanReason = reason.trim();
+    const tendered = Number(amountTendered);
+
+    if (!cleanReason) {
+      setError("Enter a reason for the correction.");
+      return;
+    }
+    if (method === "CASH" && (!Number.isFinite(tendered) || tendered < order.grandTotal)) {
+      setError("Cash tendered must be at least the order total.");
+      return;
+    }
+    if (method === "CARD" && (!cardType.trim() || !bankName.trim() || !/^\d{4}$/.test(last4))) {
+      setError("Enter the card type, bank name, and last 4 digits.");
+      return;
+    }
+
+    setError(null);
+    try {
+      await onSubmit({
+        orderId: order.id,
+        method,
+        reason: cleanReason,
+        amountTendered: method === "CASH" ? tendered : undefined,
+        cardType: method === "CARD" ? cardType.trim() : undefined,
+        bankName: method === "CARD" ? bankName.trim() : undefined,
+        last4: method === "CARD" ? last4 : undefined,
+      });
+      setEditing(false);
+    } catch {
+      // The page-level mutation displays the database error.
+    }
+  }
+
+  if (!editing) {
+    return (
+      <Button className="w-full" size="sm" variant="outline" onClick={() => setEditing(true)}>
+        <Pencil className="h-4 w-4" />
+        Correct payment method
+      </Button>
+    );
+  }
+
+  return (
+    <form className="space-y-3 rounded-xl border border-brand-orange/40 bg-brand-orange/5 p-4" onSubmit={saveCorrection}>
+      <div>
+        <p className="font-semibold text-brand-espresso">Correct payment</p>
+        <p className="text-xs text-brand-espresso/60">Admin only. This changes payment reporting and creates an audit entry.</p>
+      </div>
+
+      <label className="block text-sm font-medium text-brand-espresso">
+        Payment method
+        <select
+          className="mt-1 h-10 w-full rounded-md border bg-white px-3 text-sm"
+          value={method}
+          onChange={(event) => {
+            setMethod(event.target.value as PaymentMethod);
+            setError(null);
+          }}
+        >
+          <option value="CASH">Cash</option>
+          <option value="CARD">Card</option>
+          <option value="LANKAQR">LankaQR</option>
+          <option value="BANK_TRANSFER">Online Bank Transfer</option>
+        </select>
+      </label>
+
+      {method === "CASH" ? (
+        <label className="block text-sm font-medium text-brand-espresso">
+          Amount tendered
+          <Input className="mt-1" inputMode="decimal" value={amountTendered} onChange={(event) => setAmountTendered(event.target.value)} />
+        </label>
+      ) : null}
+
+      {method === "CARD" ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block text-sm font-medium text-brand-espresso">
+            Card type
+            <select className="mt-1 h-10 w-full rounded-md border bg-white px-3 text-sm" value={cardType} onChange={(event) => setCardType(event.target.value)}>
+              <option value="Visa">Visa</option>
+              <option value="Mastercard">Mastercard</option>
+              <option value="Amex">Amex</option>
+              <option value="Other">Other</option>
+            </select>
+          </label>
+          <label className="block text-sm font-medium text-brand-espresso">
+            Last 4 digits
+            <Input className="mt-1" inputMode="numeric" maxLength={4} value={last4} onChange={(event) => setLast4(event.target.value.replace(/\D/g, "").slice(0, 4))} />
+          </label>
+          <label className="block text-sm font-medium text-brand-espresso sm:col-span-2">
+            Bank name
+            <Input className="mt-1" value={bankName} onChange={(event) => setBankName(event.target.value)} />
+          </label>
+        </div>
+      ) : null}
+
+      <label className="block text-sm font-medium text-brand-espresso">
+        Correction reason
+        <Input className="mt-1" placeholder="Example: Card payment entered as cash" value={reason} onChange={(event) => setReason(event.target.value)} />
+      </label>
+
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      <div className="flex gap-2">
+        <Button size="sm" type="submit" disabled={pending}>Save correction</Button>
+        <Button size="sm" type="button" variant="ghost" disabled={pending} onClick={() => setEditing(false)}>Cancel</Button>
+      </div>
+    </form>
   );
 }
 

@@ -5,6 +5,7 @@ import type {
   OrderListResult,
   OrderPageOptions,
   OrderPayment,
+  OrderPaymentCorrection,
   PaymentMethod,
   OrderStatus,
   OrderSummary,
@@ -240,6 +241,15 @@ export async function getOrderById(orderId: string): Promise<OrderSummary> {
 export async function auditReceiptReprint(orderId: string) {
   const { error } = await supabase.rpc("audit_receipt_reprint", { target_order_id: orderId });
   if (error) throw error;
+}
+
+export async function correctOrderPayment({ orderId, reason, ...payment }: OrderPaymentCorrection) {
+  const { error } = await supabase.rpc("correct_order_payment", {
+    target_order_id: orderId,
+    payment_payload: payment,
+    correction_reason: reason,
+  });
+  if (error) throw new Error(error.message);
 }
 
 function buildOrdersQuery(select: string, filters: OrderFilters, pageOptions: OrderPageOptions) {

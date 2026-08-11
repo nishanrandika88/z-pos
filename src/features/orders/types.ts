@@ -23,6 +23,16 @@ export interface OrderPayment {
   maskedCardNumber?: string;
 }
 
+export interface OrderPaymentCorrection {
+  orderId: string;
+  method: PaymentMethod;
+  reason: string;
+  amountTendered?: number;
+  cardType?: string;
+  bankName?: string;
+  last4?: string;
+}
+
 export interface OrderSummary {
   id: string;
   orderNumber: string;
