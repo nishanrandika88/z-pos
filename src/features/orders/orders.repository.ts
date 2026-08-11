@@ -3,6 +3,7 @@ import type {
   OrderFilters,
   OrderItemLine,
   OrderListResult,
+  OrderContentCorrection,
   OrderPageOptions,
   OrderPayment,
   OrderPaymentCorrection,
@@ -20,6 +21,8 @@ type OrderRow = {
   subtotal: number | string;
   automatic_discount_total: number | string;
   manual_discount_total: number | string;
+  manual_discount_type: "PERCENTAGE" | "FIXED" | null;
+  manual_discount_value: number | string;
   tax_total: number | string;
   grand_total: number | string;
   created_at: string;
@@ -93,6 +96,8 @@ function mapOrder(row: OrderRow): OrderSummary {
     subtotal: numberValue(row.subtotal),
     automaticDiscountTotal: numberValue(row.automatic_discount_total),
     manualDiscountTotal: numberValue(row.manual_discount_total),
+    manualDiscountType: row.manual_discount_type ?? undefined,
+    manualDiscountValue: numberValue(row.manual_discount_value),
     taxTotal: numberValue(row.tax_total),
     grandTotal: numberValue(row.grand_total),
     createdAt: row.created_at,
@@ -109,6 +114,8 @@ const orderSelect = `
   subtotal,
   automatic_discount_total,
   manual_discount_total,
+  manual_discount_type,
+  manual_discount_value,
   tax_total,
   grand_total,
   created_at,
@@ -125,6 +132,8 @@ const orderSelectWithoutDisplayName = `
   subtotal,
   automatic_discount_total,
   manual_discount_total,
+  manual_discount_type,
+  manual_discount_value,
   tax_total,
   grand_total,
   created_at,
@@ -141,6 +150,8 @@ const legacyOrderSelect = `
   subtotal,
   automatic_discount_total,
   manual_discount_total,
+  manual_discount_type,
+  manual_discount_value,
   tax_total,
   grand_total,
   created_at,
@@ -157,6 +168,8 @@ const legacyOrderSelectWithoutDisplayName = `
   subtotal,
   automatic_discount_total,
   manual_discount_total,
+  manual_discount_type,
+  manual_discount_value,
   tax_total,
   grand_total,
   created_at,
@@ -247,6 +260,15 @@ export async function correctOrderPayment({ orderId, reason, ...payment }: Order
   const { error } = await supabase.rpc("correct_order_payment", {
     target_order_id: orderId,
     payment_payload: payment,
+    correction_reason: reason,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function correctOrderContents({ orderId, reason, ...correction }: OrderContentCorrection) {
+  const { error } = await supabase.rpc("correct_order_contents", {
+    target_order_id: orderId,
+    correction_payload: correction,
     correction_reason: reason,
   });
   if (error) throw new Error(error.message);

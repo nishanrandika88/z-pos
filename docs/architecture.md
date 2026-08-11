@@ -77,7 +77,7 @@ App
 - `/dashboard`: admin dashboard.
 - `/catalog`: admin categories/items.
 - `/discounts`: admin discount rules.
-- `/orders`: branch order history for admins/cashiers; admins can make audited payment-method corrections and authorized users can reprint receipts.
+- `/orders`: branch order history for admins/cashiers; admins can make audited item, bill-discount, and payment corrections, and authorized users can reprint receipts.
 - `/reports`: admin reports.
 - `/users`: admin user management.
 - `/settings`: admin company, branch, printer settings.

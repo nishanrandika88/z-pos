@@ -44,5 +44,7 @@ export interface OrderTotals {
 export interface OrderDraft {
   lines: CartLine[];
   totals: OrderTotals;
+  manualDiscountMode?: "PERCENTAGE" | "FIXED";
+  manualDiscountValue?: number;
   payment?: PaymentDetails;
 }

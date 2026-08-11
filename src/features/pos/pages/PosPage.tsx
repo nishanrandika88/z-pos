@@ -304,6 +304,8 @@ export function PosPage() {
       draft: {
         lines,
         totals,
+        manualDiscountMode,
+        manualDiscountValue,
         payment: salePayment,
       },
       receiptWindow,

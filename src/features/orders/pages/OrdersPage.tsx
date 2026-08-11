@@ -1,12 +1,15 @@
 import { type FormEvent, type MouseEvent, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarDays, CreditCard, Landmark, Pencil, Printer, QrCode, Search, Wallet, X } from "lucide-react";
+import type { Discount, Item } from "@/domain/catalog/types";
 import { can } from "@/features/auth/rbac";
 import { useAuthStore } from "@/features/auth/stores/auth.store";
-import { auditReceiptReprint, correctOrderPayment, listOrders } from "@/features/orders/orders.repository";
+import { OrderContentCorrectionForm } from "@/features/orders/components/OrderContentCorrectionForm";
+import { auditReceiptReprint, correctOrderContents, correctOrderPayment, listOrders } from "@/features/orders/orders.repository";
 import { clearCachedOrders, writeCachedOrders } from "@/features/orders/orders-cache";
 import { printReceipt } from "@/features/orders/receipt-print";
-import type { OrderFilters, OrderPayment, OrderPaymentCorrection, OrderSummary, PaymentMethod } from "@/features/orders/types";
+import type { OrderContentCorrection, OrderFilters, OrderPayment, OrderPaymentCorrection, OrderSummary, PaymentMethod } from "@/features/orders/types";
+import { listActiveItems, loadActiveDiscounts } from "@/features/pos/pos.repository";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
@@ -15,6 +18,8 @@ import { NoticeToast, type Notice } from "@/shared/ui/notice-toast";
 const currency = new Intl.NumberFormat("en-LK", { style: "currency", currency: "LKR" });
 const dateTime = new Intl.DateTimeFormat("en-LK", { dateStyle: "medium", timeStyle: "short" });
 const emptyOrders: OrderSummary[] = [];
+const emptyItems: Item[] = [];
+const emptyDiscounts: Discount[] = [];
 const ordersPageSize = 20;
 const emptyOrderResult = { orders: emptyOrders, hasMore: false };
 
@@ -38,6 +43,20 @@ export function OrdersPage() {
     refetchOnWindowFocus: false,
   });
   const orders = orderResult.orders;
+  const { data: activeItems = emptyItems } = useQuery({
+    queryKey: ["items", "active"],
+    queryFn: listActiveItems,
+    enabled: canCorrectPayment,
+    staleTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+  const { data: activeDiscounts = emptyDiscounts } = useQuery({
+    queryKey: ["discounts", "active"],
+    queryFn: loadActiveDiscounts,
+    enabled: canCorrectPayment,
+    staleTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
 
   useEffect(() => {
     if (!hasActiveFilters && page === 1 && orders.length > 0) writeCachedOrders(orders);
@@ -59,6 +78,20 @@ export function OrdersPage() {
       setNotice({
         tone: "error",
         message: mutationError instanceof Error ? mutationError.message : "Could not correct the payment method.",
+      });
+    },
+  });
+  const correctContentsMutation = useMutation({
+    mutationFn: correctOrderContents,
+    onSuccess: async () => {
+      clearCachedOrders();
+      await queryClient.invalidateQueries({ queryKey: ["orders"] });
+      setNotice({ tone: "success", message: "Order items and bill discount corrected and added to the audit log." });
+    },
+    onError: (mutationError) => {
+      setNotice({
+        tone: "error",
+        message: mutationError instanceof Error ? mutationError.message : "Could not correct the order.",
       });
     },
   });
@@ -98,7 +131,7 @@ export function OrdersPage() {
       <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Orders</h1>
-          <p className="text-muted-foreground">Search orders, review details, and reprint receipts. Admins can correct payment methods.</p>
+          <p className="text-muted-foreground">Search orders, review details, and reprint receipts. Admins can correct items, bill discounts, and payments.</p>
         </div>
       </div>
       {notice ? <NoticeToast notice={notice} onClose={() => setNotice(null)} /> : null}
@@ -266,9 +299,15 @@ export function OrdersPage() {
                 order={selectedOrder}
                 canReprint={canReprint}
                 canCorrectPayment={canCorrectPayment}
+                activeItems={activeItems}
+                activeDiscounts={activeDiscounts}
                 correctionPending={correctPaymentMutation.isPending}
+                contentCorrectionPending={correctContentsMutation.isPending}
                 onCorrectPayment={async (correction) => {
                   await correctPaymentMutation.mutateAsync(correction);
+                }}
+                onCorrectContents={async (correction) => {
+                  await correctContentsMutation.mutateAsync(correction);
                 }}
               />
             ) : (
@@ -307,14 +346,22 @@ function OrderDetails({
   order,
   canReprint,
   canCorrectPayment,
+  activeItems,
+  activeDiscounts,
   correctionPending,
+  contentCorrectionPending,
   onCorrectPayment,
+  onCorrectContents,
 }: {
   order: OrderSummary;
   canReprint: boolean;
   canCorrectPayment: boolean;
+  activeItems: Item[];
+  activeDiscounts: Discount[];
   correctionPending: boolean;
+  contentCorrectionPending: boolean;
   onCorrectPayment: (correction: OrderPaymentCorrection) => Promise<void>;
+  onCorrectContents: (correction: OrderContentCorrection) => Promise<void>;
 }) {
   const payment = order.payments[0];
 
@@ -360,6 +407,17 @@ function OrderDetails({
           <span>{currency.format(order.grandTotal)}</span>
         </div>
       </div>
+
+      {canCorrectPayment && order.status === "COMPLETED" && order.payments.length === 1 ? (
+        <OrderContentCorrectionForm
+          key={`${order.id}:${order.grandTotal}:${order.items.length}:${order.manualDiscountType ?? ""}:${order.manualDiscountValue ?? ""}`}
+          order={order}
+          items={activeItems}
+          discounts={activeDiscounts}
+          pending={contentCorrectionPending}
+          onSubmit={onCorrectContents}
+        />
+      ) : null}
 
       {payment ? (
         <div className="space-y-3">

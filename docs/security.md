@@ -44,6 +44,7 @@ Events:
 - discount change
 - order creation
 - order payment correction (old/new payment details and required reason)
+- order item/discount correction (append-only item snapshots, recalculated totals, and required reason)
 - order cancellation
 - manual bill discount
 - receipt reprint

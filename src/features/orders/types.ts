@@ -1,5 +1,6 @@
 export type OrderStatus = "PENDING" | "COMPLETED" | "CANCELLED";
 export type PaymentMethod = "CASH" | "CARD" | "LANKAQR" | "BANK_TRANSFER";
+export type ManualDiscountMode = "PERCENTAGE" | "FIXED";
 
 export interface OrderItemLine {
   id: string;
@@ -33,6 +34,15 @@ export interface OrderPaymentCorrection {
   last4?: string;
 }
 
+export interface OrderContentCorrection {
+  orderId: string;
+  addedItems: Array<{ itemId: string; quantity: number }>;
+  discountMode: ManualDiscountMode;
+  discountValue: number;
+  cashTendered?: number;
+  reason: string;
+}
+
 export interface OrderSummary {
   id: string;
   orderNumber: string;
@@ -41,6 +51,8 @@ export interface OrderSummary {
   subtotal: number;
   automaticDiscountTotal: number;
   manualDiscountTotal: number;
+  manualDiscountType?: ManualDiscountMode;
+  manualDiscountValue?: number;
   taxTotal: number;
   grandTotal: number;
   createdAt: string;

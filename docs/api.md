@@ -168,6 +168,34 @@ Rules:
 - Cash corrections require an amount tendered at least equal to the order total; balance is recalculated by the database.
 - The previous and corrected payment details plus the required reason are written to the audit log.
 
+### Correct Order Items and Bill Discount
+
+`POST /rpc/correct_order_contents`
+
+Request:
+
+```json
+{
+  "target_order_id": "order-uuid",
+  "correction_payload": {
+    "addedItems": [{ "itemId": "item-uuid", "quantity": 2 }],
+    "discountMode": "PERCENTAGE",
+    "discountValue": 10,
+    "cashTendered": 2500
+  },
+  "correction_reason": "Two items were missing from the bill"
+}
+```
+
+Rules:
+
+- Branch administrator only; completed orders with a single payment only.
+- Items are append-only and use the current catalog price plus the best current automatic discount.
+- The bill discount accepts `PERCENTAGE` (0–100) or `FIXED` amount and is recalculated over the amount after automatic discounts.
+- Tax uses the order's effective tax rate, and the payment amount is synchronized to the corrected grand total.
+- Cash orders require corrected tendered cash at least equal to the corrected total; balance is recalculated.
+- Existing item snapshots are not rewritten. Added snapshots and all before/after totals are audited with the required reason.
+
 ## Reports
 
 Recommended RPC/view endpoints:
