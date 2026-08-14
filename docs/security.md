@@ -15,6 +15,8 @@
 - Admin can manage branch data.
 - Cashier can create POS orders and read own orders.
 - Optional cashier permissions are stored in `user_permissions`.
+- Dashboard aggregates run with invoker security, so they cannot bypass the caller's order, order-item, or payment RLS visibility.
+- Dashboard Realtime broadcasts contain only a change timestamp; financial totals and order details are fetched through RLS-protected queries.
 
 ## Data Protection
 

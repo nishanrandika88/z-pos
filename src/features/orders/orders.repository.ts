@@ -297,6 +297,10 @@ function buildOrdersQuery(select: string, filters: OrderFilters, pageOptions: Or
     query = query.lte("created_at", `${filters.dateTo}T23:59:59.999`);
   }
 
+  if (filters.status) {
+    query = query.eq("status", filters.status);
+  }
+
   return query;
 }
 

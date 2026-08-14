@@ -1,39 +1,57 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, CreditCard, Receipt, RefreshCw, ShoppingBag, TrendingUp } from "lucide-react";
-import { buildItemSales, fetchOrdersForRange, summarizeOrders } from "@/features/reports/reports.repository";
+import { BarChart3, CalendarDays, CalendarRange, CreditCard, Receipt, RefreshCw, ShoppingBag, TrendingUp } from "lucide-react";
+import { emptyDashboardSummary, fetchDashboardSummary, paymentPercentage } from "@/features/dashboard/dashboard.repository";
+import { buildItemSales, fetchOrdersForRange } from "@/features/reports/reports.repository";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader } from "@/shared/ui/card";
 
 const currency = new Intl.NumberFormat("en-LK", { style: "currency", currency: "LKR" });
 const dateTime = new Intl.DateTimeFormat("en-LK", { dateStyle: "medium", timeStyle: "short" });
+const quantity = new Intl.NumberFormat("en-LK", { maximumFractionDigits: 3 });
 
 export function DashboardPage() {
   const today = localDate();
-  const sevenDaysAgo = localDate(daysAgo(6));
-  const { data: todayOrders = [], isFetching, refetch, error } = useQuery({
-    queryKey: ["dashboard", "orders", today],
-    queryFn: () => fetchOrdersForRange({ dateFrom: today, dateTo: today }),
+  const {
+    data: summary = emptyDashboardSummary,
+    isFetching: isSummaryFetching,
+    refetch: refetchSummary,
+    error: summaryError,
+  } = useQuery({
+    queryKey: ["dashboard", "summary"],
+    queryFn: fetchDashboardSummary,
     refetchOnMount: "always",
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
   });
-  const { data: weekOrders = [] } = useQuery({
-    queryKey: ["dashboard", "orders", sevenDaysAgo, today],
-    queryFn: () => fetchOrdersForRange({ dateFrom: sevenDaysAgo, dateTo: today }),
-    refetchOnWindowFocus: false,
+  const {
+    data: todayOrders = [],
+    isFetching: areTodayOrdersFetching,
+    refetch: refetchTodayOrders,
+    error: todayOrdersError,
+  } = useQuery({
+    queryKey: ["dashboard", "orders", today],
+    queryFn: () => fetchOrdersForRange({ dateFrom: today, dateTo: today, status: "COMPLETED" }),
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 
-  const summary = useMemo(() => summarizeOrders(todayOrders), [todayOrders]);
-  const weekSummary = useMemo(() => summarizeOrders(weekOrders), [weekOrders]);
   const topItems = useMemo(() => buildItemSales(todayOrders).slice(0, 6), [todayOrders]);
   const recentOrders = todayOrders.slice(0, 8);
+  const isFetching = isSummaryFetching || areTodayOrdersFetching;
+  const error = summaryError ?? todayOrdersError;
 
   const widgets = [
-    { label: "Sales Today", value: currency.format(summary.grandTotal), icon: TrendingUp },
-    { label: "Orders Today", value: summary.orderCount, icon: Receipt },
-    { label: "Items Sold", value: summary.itemCount, icon: ShoppingBag },
-    { label: "7 Day Revenue", value: currency.format(weekSummary.grandTotal), icon: BarChart3 },
+    { label: "Orders Today", value: quantity.format(summary.ordersToday), icon: Receipt },
+    { label: "Items Sold", value: quantity.format(summary.itemsSoldToday), icon: ShoppingBag },
+    { label: "Sales Today", value: currency.format(summary.salesToday), icon: TrendingUp },
+    { label: "This Week Sales", value: currency.format(summary.salesThisWeek), icon: CalendarDays },
+    { label: "This Month Sales", value: currency.format(summary.salesThisMonth), icon: CalendarRange },
+    { label: "Total Sales", value: currency.format(summary.totalSales), icon: BarChart3 },
   ];
+
+  async function refreshDashboard() {
+    await Promise.all([refetchSummary(), refetchTodayOrders()]);
+  }
 
   return (
     <div className="space-y-4">
@@ -42,7 +60,7 @@ export function DashboardPage() {
           <h1 className="text-2xl font-semibold">Dashboard</h1>
           <p className="text-muted-foreground">Sales, orders, payment split, and top item performance.</p>
         </div>
-        <Button variant="outline" onClick={() => void refetch()} disabled={isFetching}>
+        <Button variant="outline" onClick={() => void refreshDashboard()} disabled={isFetching}>
           <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
           Refresh
         </Button>
@@ -50,15 +68,15 @@ export function DashboardPage() {
 
       {error ? <div className="rounded-md border border-destructive/30 bg-white p-3 text-sm text-destructive">{error.message}</div> : null}
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {widgets.map((widget) => (
           <Card key={widget.label}>
-            <CardContent className="flex items-center justify-between">
-              <div>
+            <CardContent className="flex min-w-0 items-center justify-between gap-2">
+              <div className="min-w-0">
                 <p className="text-sm text-muted-foreground">{widget.label}</p>
-                <p className="mt-1 text-2xl font-semibold">{widget.value}</p>
+                <p className="mt-1 truncate text-xl font-semibold" title={String(widget.value)}>{widget.value}</p>
               </div>
-              <widget.icon className="h-8 w-8 text-primary" />
+              <widget.icon className="h-7 w-7 shrink-0 text-primary" />
             </CardContent>
           </Card>
         ))}
@@ -67,7 +85,7 @@ export function DashboardPage() {
       <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
         <Card>
           <CardHeader>
-            <h2 className="font-semibold">Recent Orders Today</h2>
+            <h2 className="font-semibold">Recent Completed Orders Today</h2>
           </CardHeader>
           <CardContent>
             {recentOrders.length === 0 ? (
@@ -102,13 +120,18 @@ export function DashboardPage() {
         <div className="space-y-4">
           <Card>
             <CardHeader>
-              <h2 className="flex items-center gap-2 font-semibold"><CreditCard className="h-4 w-4" />Payment Split</h2>
+              <div>
+                <h2 className="flex items-center gap-2 font-semibold"><CreditCard className="h-4 w-4" />Today&apos;s Payment Split</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Each bar shows the method&apos;s share of {currency.format(summary.paymentTotal)} in completed payments today.
+                </p>
+              </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              <PaymentRow label="Cash" value={summary.cashTotal} total={summary.grandTotal} />
-              <PaymentRow label="Card" value={summary.cardTotal} total={summary.grandTotal} />
-              <PaymentRow label="LankaQR" value={summary.lankaQrTotal} total={summary.grandTotal} />
-              <PaymentRow label="Bank Transfer" value={summary.bankTransferTotal} total={summary.grandTotal} />
+              <PaymentRow label="Cash" value={summary.cashTotal} total={summary.paymentTotal} />
+              <PaymentRow label="Card" value={summary.cardTotal} total={summary.paymentTotal} />
+              <PaymentRow label="LankaQR" value={summary.lankaQrTotal} total={summary.paymentTotal} />
+              <PaymentRow label="Bank Transfer" value={summary.bankTransferTotal} total={summary.paymentTotal} />
             </CardContent>
           </Card>
 
@@ -139,14 +162,21 @@ export function DashboardPage() {
 }
 
 function PaymentRow({ label, value, total }: { label: string; value: number; total: number }) {
-  const percent = total > 0 ? Math.round((value / total) * 100) : 0;
+  const percent = paymentPercentage(value, total);
   return (
     <div>
       <div className="mb-1 flex items-center justify-between text-sm">
         <span>{label}</span>
-        <span className="font-semibold">{currency.format(value)}</span>
+        <span className="font-semibold">{currency.format(value)} <span className="text-xs text-muted-foreground">({percent}%)</span></span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-brand-cream">
+      <div
+        className="h-2 overflow-hidden rounded-full bg-brand-cream"
+        role="progressbar"
+        aria-label={`${label}: ${percent}% of today's completed payments`}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent}
+      >
         <div className="h-full rounded-full bg-brand-orange" style={{ width: `${percent}%` }} />
       </div>
     </div>
@@ -156,10 +186,4 @@ function PaymentRow({ label, value, total }: { label: string; value: number; tot
 function localDate(date = new Date()) {
   const offset = date.getTimezoneOffset() * 60_000;
   return new Date(date.getTime() - offset).toISOString().slice(0, 10);
-}
-
-function daysAgo(days: number) {
-  const date = new Date();
-  date.setDate(date.getDate() - days);
-  return date;
 }

@@ -196,6 +196,22 @@ Rules:
 - Cash orders require corrected tendered cash at least equal to the corrected total; balance is recalculated.
 - Existing item snapshots are not rewritten. Added snapshots and all before/after totals are audited with the required reason.
 
+## Dashboard
+
+### Dashboard Summary
+
+`POST /rpc/get_dashboard_summary`
+
+Returns one branch-scoped aggregate object for completed orders:
+
+- today's order and item counts;
+- today's, current-week, current-month, and lifetime sales;
+- today's totals for cash, card, LankaQR, and bank transfer payments.
+
+Business-day boundaries use `Asia/Colombo`, and the current week starts on Monday. The function runs as the caller, so existing order, item, and payment RLS policies continue to define which records are visible.
+
+Dashboard clients also publish a payload-free `orders-changed` Realtime broadcast after successful order creation or correction. Active dashboards debounce the event and refetch their compact summary; there is no interval polling.
+
 ## Reports
 
 Recommended RPC/view endpoints:

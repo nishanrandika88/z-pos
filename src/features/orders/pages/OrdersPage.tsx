@@ -13,6 +13,7 @@ import { listActiveItems, loadActiveDiscounts } from "@/features/pos/pos.reposit
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
+import { broadcastDashboardChange } from "@/shared/lib/dashboard-sync";
 import { NoticeToast, type Notice } from "@/shared/ui/notice-toast";
 
 const currency = new Intl.NumberFormat("en-LK", { style: "currency", currency: "LKR" });
@@ -71,7 +72,11 @@ export function OrdersPage() {
     mutationFn: correctOrderPayment,
     onSuccess: async () => {
       clearCachedOrders();
-      await queryClient.invalidateQueries({ queryKey: ["orders"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["orders"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]);
+      void broadcastDashboardChange();
       setNotice({ tone: "success", message: "Payment method corrected and added to the audit log." });
     },
     onError: (mutationError) => {
@@ -85,7 +90,11 @@ export function OrdersPage() {
     mutationFn: correctOrderContents,
     onSuccess: async () => {
       clearCachedOrders();
-      await queryClient.invalidateQueries({ queryKey: ["orders"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["orders"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]);
+      void broadcastDashboardChange();
       setNotice({ tone: "success", message: "Order items and bill discount corrected and added to the audit log." });
     },
     onError: (mutationError) => {

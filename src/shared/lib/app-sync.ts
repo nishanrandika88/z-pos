@@ -9,6 +9,7 @@ import { clearCachedOrders } from "@/features/orders/orders-cache";
 import { clearCachedCompanySettings } from "@/features/settings/settings.repository";
 
 const appQueryKeys = [
+  ["dashboard"],
   ["categories"],
   ["items"],
   ["items", "active"],

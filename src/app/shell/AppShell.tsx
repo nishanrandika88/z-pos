@@ -26,6 +26,7 @@ import { BrandLogo } from "@/shared/ui/brand-logo";
 import { Button } from "@/shared/ui/button";
 import { syncAppData } from "@/shared/lib/app-sync";
 import { cn } from "@/shared/lib/cn";
+import { subscribeToDashboardChanges } from "@/shared/lib/dashboard-sync";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "dashboard:read" },
@@ -47,6 +48,7 @@ export function AppShell() {
   const [isNavCollapsed, setIsNavCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const syncedProfileRef = useRef<string | null>(null);
+  const dashboardRefreshTimeoutRef = useRef<number | null>(null);
   const visibleItems = navItems.filter((item) => can(profile?.role, item.permission, profile?.permissions));
   const isPos = location.pathname === "/pos";
   const userDisplayName = profile?.displayName || profile?.fullName || "Admin";
@@ -55,6 +57,26 @@ export function AppShell() {
     if (!profile?.id || syncedProfileRef.current === profile.id) return;
     syncedProfileRef.current = profile.id;
     void syncAppData(queryClient);
+  }, [profile?.id, queryClient]);
+
+  useEffect(() => {
+    if (!profile?.id) return;
+
+    const unsubscribe = subscribeToDashboardChanges(() => {
+      if (dashboardRefreshTimeoutRef.current !== null) {
+        window.clearTimeout(dashboardRefreshTimeoutRef.current);
+      }
+      dashboardRefreshTimeoutRef.current = window.setTimeout(() => {
+        void queryClient.invalidateQueries({ queryKey: ["dashboard"], refetchType: "active" });
+      }, 500);
+    });
+
+    return () => {
+      unsubscribe();
+      if (dashboardRefreshTimeoutRef.current !== null) {
+        window.clearTimeout(dashboardRefreshTimeoutRef.current);
+      }
+    };
   }, [profile?.id, queryClient]);
 
   useEffect(() => {

@@ -45,7 +45,8 @@ function applyOrderFilters(orders: OrderSummary[], filters: OrderFilters) {
     const matchesSearch = !query || order.orderNumber.toLowerCase().includes(query);
     const matchesFrom = !filters.dateFrom || createdAt >= new Date(`${filters.dateFrom}T00:00:00`).getTime();
     const matchesTo = !filters.dateTo || createdAt <= new Date(`${filters.dateTo}T23:59:59.999`).getTime();
-    return matchesSearch && matchesFrom && matchesTo;
+    const matchesStatus = !filters.status || order.status === filters.status;
+    return matchesSearch && matchesFrom && matchesTo && matchesStatus;
   });
 }
 
