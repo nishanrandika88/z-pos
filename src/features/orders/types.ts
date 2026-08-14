@@ -65,6 +65,7 @@ export interface OrderFilters {
   search?: string;
   dateFrom?: string;
   dateTo?: string;
+  status?: OrderStatus;
 }
 
 export interface OrderPageOptions {

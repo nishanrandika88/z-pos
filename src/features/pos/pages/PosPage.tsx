@@ -35,6 +35,7 @@ import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { syncAppData } from "@/shared/lib/app-sync";
 import { itemPlaceholderImage } from "@/shared/lib/assets";
+import { broadcastDashboardChange } from "@/shared/lib/dashboard-sync";
 import { NoticeToast, type Notice } from "@/shared/ui/notice-toast";
 
 const currency = new Intl.NumberFormat("en-LK", { style: "currency", currency: "LKR" });
@@ -94,6 +95,8 @@ export function PosPage() {
       addCachedOrder(order);
       queryClient.setQueryData<OrderSummary[]>(["orders", {}], (current) => mergeRecentOrder(current, order));
       void queryClient.invalidateQueries({ queryKey: ["orders"] });
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      void broadcastDashboardChange();
       clearCart();
       setNotice({ tone: "success", message: `Order ${order.orderNumber} saved and sent to print.` });
     },

@@ -125,6 +125,8 @@ erDiagram
 
 The complete PostgreSQL schema, constraints, indexes, triggers, RPC functions, and RLS policies are in `supabase/migrations/001_initial_schema.sql`.
 
+The dashboard uses `get_dashboard_summary()` for completed-order metrics instead of downloading historical order lines and payments. It retains a current-day detail query for recent orders and top items. Successful order creation or correction emits a small Supabase Realtime broadcast; active dashboards debounce that signal and invalidate their React Query data, while focus refresh and the manual button provide fallbacks without continuous polling.
+
 ## Authentication Design
 
 - Supabase Auth handles sessions, refresh tokens, password reset, and email identity.
