@@ -16,6 +16,9 @@ export interface OrderPayment {
   id: string;
   method: PaymentMethod;
   amount: number;
+  commissionRate: number;
+  commissionAmount: number;
+  netAmount: number;
   amountTendered?: number;
   balanceReturned?: number;
   cardType?: string;

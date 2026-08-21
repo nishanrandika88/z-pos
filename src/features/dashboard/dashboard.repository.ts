@@ -7,6 +7,14 @@ export interface DashboardSummary {
   salesThisWeek: number;
   salesThisMonth: number;
   totalSales: number;
+  commissionToday: number;
+  commissionThisWeek: number;
+  commissionThisMonth: number;
+  totalCommission: number;
+  netSalesToday: number;
+  netSalesThisWeek: number;
+  netSalesThisMonth: number;
+  totalNetSales: number;
   cashTotal: number;
   cardTotal: number;
   lankaQrTotal: number;
@@ -21,6 +29,14 @@ export const emptyDashboardSummary: DashboardSummary = {
   salesThisWeek: 0,
   salesThisMonth: 0,
   totalSales: 0,
+  commissionToday: 0,
+  commissionThisWeek: 0,
+  commissionThisMonth: 0,
+  totalCommission: 0,
+  netSalesToday: 0,
+  netSalesThisWeek: 0,
+  netSalesThisMonth: 0,
+  totalNetSales: 0,
   cashTotal: 0,
   cardTotal: 0,
   lankaQrTotal: 0,

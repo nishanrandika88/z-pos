@@ -41,6 +41,8 @@ type OrderRow = {
     id: string;
     method: PaymentMethod;
     amount: number | string;
+    commission_rate: number | string;
+    commission_amount: number | string;
     amount_tendered: number | string | null;
     balance_returned: number | string | null;
     card_type: string | null;
@@ -72,10 +74,15 @@ function mapOrderItem(row: NonNullable<OrderRow["order_items"]>[number]): OrderI
 }
 
 function mapPayment(row: NonNullable<OrderRow["payments"]>[number]): OrderPayment {
+  const amount = numberValue(row.amount);
+  const commissionAmount = numberValue(row.commission_amount);
   return {
     id: row.id,
     method: row.method,
-    amount: numberValue(row.amount),
+    amount,
+    commissionRate: numberValue(row.commission_rate),
+    commissionAmount,
+    netAmount: amount - commissionAmount,
     amountTendered: row.amount_tendered == null ? undefined : numberValue(row.amount_tendered),
     balanceReturned: row.balance_returned == null ? undefined : numberValue(row.balance_returned),
     cardType: row.card_type ?? undefined,
@@ -122,7 +129,7 @@ const orderSelect = `
   completed_at,
   cashier:profiles!orders_cashier_id_fkey(full_name,display_name,email),
   order_items(id,item_code,item_name,quantity,unit_price,discount_total,line_total),
-  payments(id,method,amount,amount_tendered,balance_returned,card_type,bank_name,card_last4,masked_card_number)
+  payments(id,method,amount,commission_rate,commission_amount,amount_tendered,balance_returned,card_type,bank_name,card_last4,masked_card_number)
 `;
 
 const orderSelectWithoutDisplayName = `
@@ -140,7 +147,7 @@ const orderSelectWithoutDisplayName = `
   completed_at,
   cashier:profiles!orders_cashier_id_fkey(full_name,email),
   order_items(id,item_code,item_name,quantity,unit_price,discount_total,line_total),
-  payments(id,method,amount,amount_tendered,balance_returned,card_type,bank_name,card_last4,masked_card_number)
+  payments(id,method,amount,commission_rate,commission_amount,amount_tendered,balance_returned,card_type,bank_name,card_last4,masked_card_number)
 `;
 
 const legacyOrderSelect = `
@@ -158,7 +165,7 @@ const legacyOrderSelect = `
   completed_at,
   cashier:profiles(full_name,display_name,email),
   order_items(id,item_code,item_name,quantity,unit_price,discount_total,line_total),
-  payments(id,method,amount,amount_tendered,balance_returned,card_type,bank_name,card_last4,masked_card_number)
+  payments(id,method,amount,commission_rate,commission_amount,amount_tendered,balance_returned,card_type,bank_name,card_last4,masked_card_number)
 `;
 
 const legacyOrderSelectWithoutDisplayName = `
@@ -176,7 +183,7 @@ const legacyOrderSelectWithoutDisplayName = `
   completed_at,
   cashier:profiles(full_name,email),
   order_items(id,item_code,item_name,quantity,unit_price,discount_total,line_total),
-  payments(id,method,amount,amount_tendered,balance_returned,card_type,bank_name,card_last4,masked_card_number)
+  payments(id,method,amount,commission_rate,commission_amount,amount_tendered,balance_returned,card_type,bank_name,card_last4,masked_card_number)
 `;
 
 export async function listOrders(filters: OrderFilters, pageOptions: OrderPageOptions): Promise<OrderListResult> {
