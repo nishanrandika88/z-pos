@@ -70,13 +70,13 @@ export function DashboardPage() {
 
       {error ? <div className="rounded-md border border-destructive/30 bg-white p-3 text-sm text-destructive">{error.message}</div> : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {widgets.map((widget) => (
           <Card key={widget.label}>
             <CardContent className="flex min-w-0 items-center justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-sm text-muted-foreground">{widget.label}</p>
-                <p className="mt-1 truncate text-xl font-semibold" title={String(widget.value)}>{widget.value}</p>
+                <p className="mt-1 break-words text-xl font-semibold" title={String(widget.value)}>{widget.value}</p>
               </div>
               <widget.icon className="h-7 w-7 shrink-0 text-primary" />
             </CardContent>
