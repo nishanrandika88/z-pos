@@ -590,6 +590,12 @@ function PaymentBox({ payment }: { payment: OrderPayment }) {
         {paymentMethodLabel(payment.method)}
       </div>
       <SummaryRow label="Paid" value={payment.amount} />
+      {payment.commissionAmount > 0 ? (
+        <>
+          <SummaryRow label={`Commission (${payment.commissionRate}%)`} value={-payment.commissionAmount} />
+          <SummaryRow label="Net received" value={payment.netAmount} />
+        </>
+      ) : null}
       {isCash ? (
         <>
           <SummaryRow label="Tendered" value={payment.amountTendered ?? 0} />

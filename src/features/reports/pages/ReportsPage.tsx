@@ -95,6 +95,8 @@ export function ReportsPage() {
           Card: summary.cardTotal,
           LankaQR: summary.lankaQrTotal,
           "Bank Transfer": summary.bankTransferTotal,
+          "Payment Commission": summary.commissionTotal,
+          "Net Sales": summary.netTotal,
         },
       ]);
     }
@@ -103,9 +105,11 @@ export function ReportsPage() {
     if (reportType === "catalog") downloadCsv("catalog-export.csv", catalogRows(catalogItems));
     if (reportType === "expenses") downloadCsv(`expenses-${suffix}.csv`, expenseRows(expenses));
     if (reportType === "profit") downloadCsv(`profit-loss-${suffix}.csv`, [{
-      Sales: summary.grandTotal,
+      "Gross Sales": summary.grandTotal,
+      "Payment Commission": summary.commissionTotal,
+      "Net Sales": summary.netTotal,
       Expenses: expenseSummary.total,
-      "Profit / Loss": summary.grandTotal - expenseSummary.total,
+      "Profit / Loss": summary.netTotal - expenseSummary.total,
     }]);
   }
 
@@ -159,7 +163,7 @@ export function ReportsPage() {
       {reportType === "items" ? <ItemSalesReport rows={itemSales} /> : null}
       {reportType === "catalog" ? <CatalogReport items={catalogItems} /> : null}
       {reportType === "expenses" ? <ExpenseReport summary={expenseSummary} /> : null}
-      {reportType === "profit" ? <ProfitLossReport sales={summary.grandTotal} expenses={expenseSummary.total} /> : null}
+      {reportType === "profit" ? <ProfitLossReport summary={summary} expenses={expenseSummary.total} /> : null}
     </div>
   );
 }
@@ -177,9 +181,16 @@ function ExpenseReport({ summary }: { summary: ReturnType<typeof summarizeExpens
   return <div className="space-y-4"><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{cards.map((card) => <Card key={card.label}><CardContent><p className="text-sm text-muted-foreground">{card.label}</p><p className="mt-1 text-2xl font-semibold">{card.value}</p></CardContent></Card>)}</div><div className="grid gap-4 lg:grid-cols-2"><ReportTable title="Expenses by category" emptyText="No category expenses." headers={["Category", "Total"]} rows={summary.byCategory.map((row) => [row.name, currency.format(row.total)])} /><ReportTable title="Expenses by supplier" emptyText="No supplier expenses." headers={["Supplier", "Total"]} rows={summary.bySupplier.map((row) => [row.name, currency.format(row.total)])} /></div><ReportTable title="Expenses entered by user" emptyText="No user expenses." headers={["User", "Total"]} rows={summary.byUser.map((row) => [row.name, currency.format(row.total)])} /></div>;
 }
 
-function ProfitLossReport({ sales, expenses }: { sales: number; expenses: number }) {
-  const profit = sales - expenses;
-  return <div className="grid gap-3 sm:grid-cols-3"><Card><CardContent><p className="text-sm text-muted-foreground">Completed sales</p><p className="mt-1 text-2xl font-semibold">{currency.format(sales)}</p></CardContent></Card><Card><CardContent><p className="text-sm text-muted-foreground">Approved / paid expenses</p><p className="mt-1 text-2xl font-semibold">{currency.format(expenses)}</p></CardContent></Card><Card><CardContent><p className="text-sm text-muted-foreground">Profit / loss</p><p className={`mt-1 text-2xl font-semibold ${profit < 0 ? "text-destructive" : "text-brand-forest"}`}>{currency.format(profit)}</p></CardContent></Card></div>;
+function ProfitLossReport({ summary, expenses }: { summary: ReturnType<typeof summarizeOrders>; expenses: number }) {
+  const profit = summary.netTotal - expenses;
+  const cards = [
+    { label: "Gross completed sales", value: summary.grandTotal },
+    { label: "Payment commission", value: summary.commissionTotal },
+    { label: "Net sales", value: summary.netTotal },
+    { label: "Approved / paid expenses", value: expenses },
+    { label: "Profit / loss", value: profit, emphasis: true },
+  ];
+  return <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">{cards.map((card) => <Card key={card.label}><CardContent><p className="text-sm text-muted-foreground">{card.label}</p><p className={`mt-1 text-2xl font-semibold ${card.emphasis ? profit < 0 ? "text-destructive" : "text-brand-forest" : ""}`}>{currency.format(card.value)}</p></CardContent></Card>)}</div>;
 }
 
 function TotalSalesStrip({ summary, dateFrom, dateTo }: { summary: ReturnType<typeof summarizeOrders>; dateFrom: string; dateTo: string }) {
@@ -199,7 +210,10 @@ function TotalSalesStrip({ summary, dateFrom, dateTo }: { summary: ReturnType<ty
           <p className="text-sm font-medium text-muted-foreground">Total sale</p>
           <p className="text-xs text-brand-espresso/60">{rangeText}</p>
         </div>
-        <p className="text-2xl font-bold text-brand-forest">{currency.format(summary.grandTotal)}</p>
+        <div className="text-right">
+          <p className="text-2xl font-bold text-brand-forest">{currency.format(summary.grandTotal)}</p>
+          <p className="text-xs text-muted-foreground">Commission {currency.format(summary.commissionTotal)} · Net {currency.format(summary.netTotal)}</p>
+        </div>
       </CardContent>
     </Card>
   );
@@ -216,7 +230,9 @@ function SalesReport({ summary }: { summary: ReturnType<typeof summarizeOrders> 
     { label: "LankaQR", value: currency.format(summary.lankaQrTotal) },
     { label: "Bank Transfer", value: currency.format(summary.bankTransferTotal) },
     { label: "Tax", value: currency.format(summary.taxTotal) },
-    { label: "Total", value: currency.format(summary.grandTotal) },
+    { label: "Gross Total", value: currency.format(summary.grandTotal) },
+    { label: "Payment Commission", value: currency.format(summary.commissionTotal) },
+    { label: "Net Sales", value: currency.format(summary.netTotal) },
   ];
 
   return (
@@ -238,7 +254,7 @@ function OrdersReport({ orders }: { orders: Awaited<ReturnType<typeof fetchOrder
     <ReportTable
       title="Orders"
       emptyText="No orders found for this range."
-      headers={["Order", "Date", "Cashier", "Items", "Discount", "Total"]}
+      headers={["Order", "Date", "Cashier", "Items", "Discount", "Gross Total", "Commission", "Net Received"]}
       rows={orders.map((order) => [
         order.orderNumber,
         new Date(order.createdAt).toLocaleString(),
@@ -246,6 +262,8 @@ function OrdersReport({ orders }: { orders: Awaited<ReturnType<typeof fetchOrder
         order.items.reduce((sum, item) => sum + item.quantity, 0),
         currency.format(order.automaticDiscountTotal + order.manualDiscountTotal),
         currency.format(order.grandTotal),
+        currency.format(order.payments.reduce((sum, payment) => sum + payment.commissionAmount, 0)),
+        currency.format(order.payments.reduce((sum, payment) => sum + payment.netAmount, 0)),
       ])}
     />
   );

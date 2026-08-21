@@ -139,6 +139,7 @@ Rules:
 
 - Generate order number on server.
 - Save order, order items, payment, and audit event in one transaction.
+- After the payment is saved, calculate a merchant commission of 3% for `CARD`, 1% for `LANKAQR`, and 0% for other methods. The customer-facing order and receipt total does not change.
 - Print only after this RPC succeeds.
 
 ### Correct Order Payment
@@ -164,6 +165,7 @@ Rules:
 
 - Branch administrator only.
 - Only the single payment on a completed order is corrected; order totals, items, discounts, and inventory are unchanged.
+- Changing the payment method automatically recalculates its commission and net received amount.
 - Card corrections require card type, bank name, and last four digits. Full card numbers, CVV, and PIN are never accepted.
 - Cash corrections require an amount tendered at least equal to the order total; balance is recalculated by the database.
 - The previous and corrected payment details plus the required reason are written to the audit log.
@@ -205,7 +207,7 @@ Rules:
 Returns one branch-scoped aggregate object for completed orders:
 
 - today's order and item counts;
-- today's, current-week, current-month, and lifetime sales;
+- today's, current-week, current-month, and lifetime gross sales, payment commissions, and net sales;
 - today's totals for cash, card, LankaQR, and bank transfer payments.
 
 Business-day boundaries use `Asia/Colombo`, and the current week starts on Monday. The function runs as the caller, so existing order, item, and payment RLS policies continue to define which records are visible.
@@ -213,6 +215,8 @@ Business-day boundaries use `Asia/Colombo`, and the current week starts on Monda
 Dashboard clients also publish a payload-free `orders-changed` Realtime broadcast after successful order creation or correction. Active dashboards debounce the event and refetch their compact summary; there is no interval polling.
 
 ## Reports
+
+Gross sales remain equal to customer order totals. Payment commission is reported separately, net sales are gross sales less payment commission, and profit/loss is net sales less approved or paid expenses. Existing orders use the same 3% card and 1% LankaQR policy through the payment backfill in migration `020_order_payment_commissions.sql`.
 
 Recommended RPC/view endpoints:
 

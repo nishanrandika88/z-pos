@@ -3,7 +3,8 @@ import type { OrderSummary, PaymentMethod } from "@/features/orders/types";
 import type { ExpenseSummary } from "@/domain/expenses/types";
 import { summarizeExpenses, summarizeOrders } from "@/features/reports/reports.repository";
 
-function order(id: string, method: PaymentMethod, amount: number): OrderSummary {
+function order(id: string, method: PaymentMethod, amount: number, commissionRate = 0): OrderSummary {
+  const commissionAmount = Math.round(amount * commissionRate) / 100;
   return {
     id,
     orderNumber: `INV-${id}`,
@@ -21,6 +22,9 @@ function order(id: string, method: PaymentMethod, amount: number): OrderSummary 
         id: `payment-${id}`,
         method,
         amount,
+        commissionRate,
+        commissionAmount,
+        netAmount: amount - commissionAmount,
       },
     ],
   };
@@ -30,8 +34,8 @@ describe("payment reporting", () => {
   it("separates all payment methods", () => {
     const summary = summarizeOrders([
       order("cash", "CASH", 200),
-      order("card", "CARD", 1_000),
-      order("qr", "LANKAQR", 500),
+      order("card", "CARD", 1_000, 3),
+      order("qr", "LANKAQR", 500, 1),
       order("transfer", "BANK_TRANSFER", 300),
     ]);
 
@@ -40,6 +44,8 @@ describe("payment reporting", () => {
     expect(summary.lankaQrTotal).toBe(500);
     expect(summary.bankTransferTotal).toBe(300);
     expect(summary.grandTotal).toBe(2_000);
+    expect(summary.commissionTotal).toBe(35);
+    expect(summary.netTotal).toBe(1_965);
   });
 });
 

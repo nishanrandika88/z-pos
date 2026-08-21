@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, CalendarDays, CalendarRange, CreditCard, Receipt, RefreshCw, ShoppingBag, TrendingUp } from "lucide-react";
+import { BarChart3, CalendarDays, CalendarRange, CreditCard, Receipt, RefreshCw, ShoppingBag, TrendingDown, TrendingUp } from "lucide-react";
 import { emptyDashboardSummary, fetchDashboardSummary, paymentPercentage } from "@/features/dashboard/dashboard.repository";
 import { buildItemSales, fetchOrdersForRange } from "@/features/reports/reports.repository";
 import { Button } from "@/shared/ui/button";
@@ -43,10 +43,12 @@ export function DashboardPage() {
   const widgets = [
     { label: "Orders Today", value: quantity.format(summary.ordersToday), icon: Receipt },
     { label: "Items Sold", value: quantity.format(summary.itemsSoldToday), icon: ShoppingBag },
-    { label: "Sales Today", value: currency.format(summary.salesToday), icon: TrendingUp },
-    { label: "This Week Sales", value: currency.format(summary.salesThisWeek), icon: CalendarDays },
-    { label: "This Month Sales", value: currency.format(summary.salesThisMonth), icon: CalendarRange },
-    { label: "Total Sales", value: currency.format(summary.totalSales), icon: BarChart3 },
+    { label: "Gross Sales Today", value: currency.format(summary.salesToday), icon: TrendingUp },
+    { label: "Commission Today", value: currency.format(summary.commissionToday), icon: TrendingDown },
+    { label: "Net Sales Today", value: currency.format(summary.netSalesToday), icon: TrendingUp },
+    { label: "Net This Week", value: currency.format(summary.netSalesThisWeek), icon: CalendarDays },
+    { label: "Net This Month", value: currency.format(summary.netSalesThisMonth), icon: CalendarRange },
+    { label: "Total Net Sales", value: currency.format(summary.totalNetSales), icon: BarChart3 },
   ];
 
   async function refreshDashboard() {
@@ -68,7 +70,7 @@ export function DashboardPage() {
 
       {error ? <div className="rounded-md border border-destructive/30 bg-white p-3 text-sm text-destructive">{error.message}</div> : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
         {widgets.map((widget) => (
           <Card key={widget.label}>
             <CardContent className="flex min-w-0 items-center justify-between gap-2">
